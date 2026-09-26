@@ -252,14 +252,17 @@ utilities are in [`app/globals.css`](app/globals.css).
 ## Deploying
 
 ```bash
-gh repo create stagegate-ask-demo --private --source=. --remote=origin --push
+# If gh has more than one host configured, pin it — otherwise it will try the
+# first one and fail on its credentials.
+GH_HOST=github.com gh repo create stagegate-ask-demo --private --source=. --remote=origin --push
 
+vercel login            # required once
 vercel --yes --prod     # framework auto-detected as Next.js
 vercel git connect      # pushes to main then auto-deploy
 ```
 
-No environment variables to set. `prebuild` runs `check:names`, so a reserved name in any
-file fails the deploy rather than shipping.
+No environment variables to set, for either. `prebuild` runs `check:names`, so a reserved
+name in any file fails the deploy rather than shipping.
 
 ---
 
