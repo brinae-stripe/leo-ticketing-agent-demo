@@ -50,7 +50,7 @@ export function DataTable({
 
   return (
     <div
-      className={cn('scroll-thin overflow-auto', className)}
+      className={cn('scroll-thin w-full max-w-full overflow-auto', className)}
       style={{ maxHeight }}
     >
       <table className="w-full border-collapse text-[12.5px]">

@@ -11,7 +11,10 @@ export function Card({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('card', className)} {...props} />;
+  // min-w-0 matters: a grid or flex item defaults to min-width:auto, so a wide
+  // table inside a card would widen its own track rather than scrolling, which
+  // is how you end up with horizontal page overflow on a phone.
+  return <div className={cn('card min-w-0', className)} {...props} />;
 }
 
 export function CardHeader({

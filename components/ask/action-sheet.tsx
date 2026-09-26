@@ -147,7 +147,9 @@ export function ActionSheet({
           )}
           {batches > 1 && (
             <Badge tone="neutral">
-              {batches} batches × {action.batch!.size}
+              {action.batch!.size === 1
+                ? `${action.batch!.total.toLocaleString('en-US')} sequential calls`
+                : `${batches} batches × ${action.batch!.size}`}
             </Badge>
           )}
         </div>
