@@ -6,6 +6,12 @@ import { cn } from '@/lib/utils';
 
 const WORD_DELAY_MS = 16;
 
+interface TimedWord {
+  word: string;
+  delay: number;
+  spaced: boolean;
+}
+
 /**
  * Streaming effect without layout shift.
  *
@@ -25,19 +31,41 @@ export function StreamingText({
   onDone?: () => void;
   className?: string;
 }) {
-  const words = React.useMemo(
-    () => paragraphs.map((paragraph) => paragraph.split(/\s+/).filter(Boolean)),
-    [paragraphs],
-  );
-  const totalWords = words.reduce((sum, list) => sum + list.length, 0);
-  const durationMs = startDelayMs + totalWords * WORD_DELAY_MS + 220;
+  // Delays are derived from each paragraph's starting word offset rather than a
+  // running counter, so there is no mutable state in the render path at all.
+  const plan = React.useMemo<TimedWord[][]>(() => {
+    const lists = paragraphs.map((paragraph) =>
+      paragraph.split(/\s+/).filter(Boolean),
+    );
+    const startOffsets = lists.reduce<number[]>(
+      (offsets, list) => [...offsets, offsets[offsets.length - 1] + list.length],
+      [0],
+    );
+    return lists.map((list, paragraphIndex) =>
+      list.map((word, wordIndex) => ({
+        word,
+        delay:
+          startDelayMs +
+          (startOffsets[paragraphIndex] + wordIndex) * WORD_DELAY_MS,
+        spaced: wordIndex < list.length - 1,
+      })),
+    );
+  }, [paragraphs, startDelayMs]);
+
+  const durationMs = React.useMemo(() => {
+    const totalWords = plan.reduce((sum, list) => sum + list.length, 0);
+    return startDelayMs + totalWords * WORD_DELAY_MS + 220;
+  }, [plan, startDelayMs]);
 
   const [finished, setFinished] = React.useState(false);
+
+  // Keeps the latest callback without reading a ref during render.
   const doneRef = React.useRef(onDone);
-  doneRef.current = onDone;
+  React.useEffect(() => {
+    doneRef.current = onDone;
+  }, [onDone]);
 
   React.useEffect(() => {
-    setFinished(false);
     const timer = setTimeout(() => {
       setFinished(true);
       doneRef.current?.();
@@ -45,11 +73,10 @@ export function StreamingText({
     return () => clearTimeout(timer);
   }, [durationMs]);
 
-  let cursor = 0;
   return (
     <div className={cn('space-y-3.5', className)}>
-      {words.map((list, paragraphIndex) => {
-        const isLast = paragraphIndex === words.length - 1;
+      {plan.map((list, paragraphIndex) => {
+        const isLast = paragraphIndex === plan.length - 1;
         return (
           <p
             key={paragraphIndex}
@@ -58,20 +85,16 @@ export function StreamingText({
               isLast && !finished && 'caret',
             )}
           >
-            {list.map((word, wordIndex) => {
-              const delay = startDelayMs + cursor * WORD_DELAY_MS;
-              cursor += 1;
-              return (
-                <span
-                  key={wordIndex}
-                  className="animate-fade-in opacity-0"
-                  style={{ animationDelay: `${delay}ms`, animationFillMode: 'forwards' }}
-                >
-                  {word}
-                  {wordIndex < list.length - 1 ? ' ' : ''}
-                </span>
-              );
-            })}
+            {list.map((entry, wordIndex) => (
+              <span
+                key={wordIndex}
+                className="animate-fade-in opacity-0"
+                style={{ animationDelay: `${entry.delay}ms`, animationFillMode: 'forwards' }}
+              >
+                {entry.word}
+                {entry.spaced ? ' ' : ''}
+              </span>
+            ))}
           </p>
         );
       })}

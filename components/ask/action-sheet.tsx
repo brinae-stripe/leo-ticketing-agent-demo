@@ -2,6 +2,7 @@
 
 import { ArrowRight, CircleCheck, CircleAlert, Loader2, ScrollText } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { toast } from 'sonner';
 
@@ -42,6 +43,11 @@ export function ActionSheet({
   const actor = useSimStore((state) => state.actor);
   const setActor = useSimStore((state) => state.setActor);
 
+  const router = useRouter();
+
+  // This component is remounted each time it opens (see ActionButton), so the
+  // initialisers below are the reset — no effect needed, and no synchronous
+  // setState cascade on open.
   const [phase, setPhase] = React.useState<Phase>('confirm');
   const [name, setName] = React.useState(actor);
   const [acknowledged, setAcknowledged] = React.useState(false);
@@ -54,17 +60,6 @@ export function ActionSheet({
     () => (open ? idempotencyKey(action.id.replace(/_/g, '-')) : ''),
     [open, action.id],
   );
-
-  React.useEffect(() => {
-    if (open) {
-      setPhase('confirm');
-      setAcknowledged(false);
-      setProgress(null);
-      setResponse(null);
-      setError(null);
-      setName(actor);
-    }
-  }, [open, actor]);
 
   const headers = React.useMemo(
     () =>
@@ -112,7 +107,7 @@ export function ActionSheet({
           : null;
       toast.success(action.label, {
         description: id ? `Returned ${id}` : 'Simulated call completed',
-        action: { label: 'Audit log', onClick: () => { window.location.href = '/audit'; } },
+        action: { label: 'Audit log', onClick: () => router.push('/audit') },
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The simulated call failed');
@@ -365,6 +360,7 @@ export function ActionButton({
         {action.label}
       </Button>
       <ActionSheet
+        key={open ? 'open' : 'closed'}
         action={action}
         open={open}
         onOpenChange={setOpen}

@@ -45,12 +45,16 @@ npm run dev          # http://localhost:3000
 | --------------------- | ---------------------------------------------------------------- |
 | `npm run dev`         | Dev server                                                       |
 | `npm run build`       | Production build (runs `check:names` first via `prebuild`)        |
-| `npm run lint`        | ESLint                                                           |
+| `npm run lint`        | ESLint (flat config, `eslint.config.mjs`)                        |
 | `npm run typecheck`   | `tsc --noEmit`                                                   |
 | `npm run check:names` | Fails the build if a reserved brand name appears anywhere        |
 | `npm run verify:data` | Calibration harness — see [Verification](#verification)          |
 
 No environment variables are required, for local development or for deployment.
+
+Built on Next 16, which uses Turbopack for `next build`. The alasql alias is declared for
+both Turbopack and webpack in [`next.config.mjs`](next.config.mjs), so `next build
+--webpack` also works.
 
 ---
 
@@ -126,9 +130,9 @@ refunds over $10,000** and to **every account debit**, regardless of size, since
 moves money out of a host's balance in the opposite direction from a payout.
 
 Long-running work sets `batch`, which drives a progress bar. Small batches make one real
-call per item (17 refunds, 17 audit entries). Large ones chunk — the 2,100-charge
-cancellation runs 11 batches of 200 and says so in the sheet, because simulating 2,100
-individual round-trips would take twenty minutes.
+call per item (17 refunds, 17 audit entries). Large ones chunk — the cancellation covers
+1,957 refundable charges in 10 batches of 200 and says so in the sheet, because simulating
+1,957 individual round-trips would take twenty minutes.
 
 ---
 

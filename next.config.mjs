@@ -3,10 +3,18 @@ import { fileURLToPath } from 'node:url';
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
-// Resolved as an absolute path on purpose: alasql's `exports` map does not list
-// its dist files, so a bare subpath request ("alasql/dist/alasql.min.js") is
-// refused by Node's resolver even though the file is right there.
-const alasqlBrowserBuild = path.join(
+/**
+ * alasql ships three builds. Its default entry (dist/alasql.fs.js) and its
+ * unminified browser build both reach for Node and React Native file-system
+ * modules to support CSV/XLSX imports, and react-native/index.js is Flow rather
+ * than JavaScript, so a bundler cannot parse it.
+ *
+ * We only ever run in-memory queries, so the dependency is pinned to the
+ * browser bundle, which has none of that. The path is absolute for webpack
+ * because alasql's `exports` map does not list its dist files, which makes a
+ * bare subpath request fail resolution even though the file is right there.
+ */
+const ALASQL_BROWSER_BUILD = path.join(
   projectRoot,
   'node_modules',
   'alasql',
@@ -17,17 +25,19 @@ const alasqlBrowserBuild = path.join(
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  // Turbopack builds and dev server.
+  turbopack: {
+    resolveAlias: {
+      alasql: './node_modules/alasql/dist/alasql.min.js',
+    },
+  },
+
+  // Kept for `next build --webpack`, which is still a supported escape hatch.
   webpack: (config) => {
-    // alasql ships three builds. The default entry (dist/alasql.fs.js) and the
-    // unminified browser build both reach for Node and React Native file-system
-    // modules for their CSV/XLSX import helpers, which webpack then tries to
-    // parse — react-native/index.js is Flow, so it fails outright.
-    //
-    // We only ever run in-memory queries, so pin the dependency to the browser
-    // bundle, which has none of that, and stub the rest for good measure.
     config.resolve.alias = {
       ...config.resolve.alias,
-      alasql: alasqlBrowserBuild,
+      alasql: ALASQL_BROWSER_BUILD,
     };
     config.resolve.fallback = {
       ...config.resolve.fallback,
