@@ -5,7 +5,7 @@ import Link from 'next/link';
 import * as React from 'react';
 
 import { SimGate } from '@/components/layout/sim-gate';
-import { Badge, Card, Input, Select } from '@/components/ui/primitives';
+import { Badge, Card, Input, Select, Skeleton } from '@/components/ui/primitives';
 import { CATEGORY_PROFILES } from '@/lib/sim/catalog';
 import { isoToShortDate, money, percent } from '@/lib/sim/format';
 import { topHostsByVolume } from '@/lib/sim/metrics';
@@ -24,7 +24,21 @@ export function HostsList() {
           next event.
         </p>
       </header>
-      <SimGate>
+      {/* The fallback is deliberately as tall as the filled table. A short
+          skeleton here pushes the footer down when 70 rows arrive, which is a
+          visible layout shift on an otherwise still page. */}
+      <SimGate
+        fallback={
+          <div aria-busy="true">
+            <div className="mb-4 flex gap-2">
+              <Skeleton className="h-9 flex-1" />
+              <Skeleton className="h-9 w-40" />
+              <Skeleton className="h-9 w-32" />
+            </div>
+            <Skeleton className="h-[52rem] w-full" />
+          </div>
+        }
+      >
         <HostsTable />
       </SimGate>
     </div>
