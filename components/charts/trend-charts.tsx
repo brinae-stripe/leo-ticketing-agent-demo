@@ -14,8 +14,8 @@ import {
   YAxis,
 } from 'recharts';
 
-import { moneyCompact, percent } from '@/lib/sim/format';
-import type { WeeklyPoint } from '@/lib/sim/metrics';
+import { count, moneyCompact, percent, shortDate } from '@/lib/sim/format';
+import type { EventActivityPoint, WeeklyPoint } from '@/lib/sim/metrics';
 
 /**
  * Chart palette. Brilliant blue leads; purple and cool gray support it. Green
@@ -289,6 +289,131 @@ export function FeeRateChart({ data }: { data: WeeklyPoint[] }) {
           />
         </ComposedChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Event activity                                                             */
+/* -------------------------------------------------------------------------- */
+
+export type ActivityMetric = 'tickets' | 'revenue' | 'conversion';
+
+export const ACTIVITY_METRICS: { key: ActivityMetric; label: string; note: string }[] = [
+  { key: 'tickets', label: 'Ticket sales', note: 'Tickets issued per day.' },
+  { key: 'revenue', label: 'Revenue', note: 'Net of refunds, per day.' },
+  {
+    key: 'conversion',
+    label: 'Conversion',
+    note: 'Payments authorised as a share of payments attempted — not page views.',
+  },
+];
+
+/**
+ * Daily sales curve for one event, mirroring the "recent activity" module an
+ * event back office puts at the top of an event overview.
+ *
+ * Deliberately one metric at a time. Tickets, revenue and conversion have three
+ * unrelated units, and a dual-axis chart that pretends otherwise invites the
+ * wrong read — a revenue spike sitting above a conversion dip looks like cause
+ * and effect when it is usually just a price mix change.
+ */
+export function EventActivityChart({
+  data,
+  metric,
+}: {
+  data: EventActivityPoint[];
+  metric: ActivityMetric;
+}) {
+  const series = React.useMemo(
+    () =>
+      data.map((point) => ({
+        label: shortDate(point.day),
+        tickets: point.tickets,
+        revenue: point.revenue,
+        // Days with no attempts have no conversion rate. `null` leaves a gap in
+        // the line; zero would draw a cliff to the axis that did not happen.
+        conversion: point.attempts > 0 ? point.orders / point.attempts : null,
+      })),
+    [data],
+  );
+
+  const config = {
+    tickets: { name: 'Tickets', color: COLORS.blue, format: (v: number) => count(v) },
+    revenue: { name: 'Revenue', color: COLORS.purple, format: moneyCompact },
+    conversion: { name: 'Conversion', color: COLORS.green, format: (v: number) => percent(v, 1) },
+  }[metric];
+
+  return (
+    <div style={{ height: HEIGHT }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id={`activity-${metric}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={config.color} stopOpacity={0.22} />
+              <stop offset="100%" stopColor={config.color} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="#F3F4F6" vertical={false} />
+          <XAxis
+            dataKey="label"
+            tickLine={false}
+            axisLine={false}
+            interval="preserveStartEnd"
+            minTickGap={24}
+            {...AXIS}
+          />
+          <YAxis
+            tickFormatter={config.format}
+            tickLine={false}
+            axisLine={false}
+            width={54}
+            domain={metric === 'conversion' ? [0, 1] : undefined}
+            {...AXIS}
+          />
+          <Tooltip content={<ActivityTooltip format={config.format} />} />
+          <Area
+            type="monotone"
+            dataKey={metric}
+            name={config.name}
+            stroke={config.color}
+            strokeWidth={2}
+            fill={`url(#activity-${metric})`}
+            connectNulls={false}
+            dot={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function ActivityTooltip({
+  active,
+  payload,
+  label,
+  format,
+}: {
+  active?: boolean;
+  payload?: { name?: string; value?: number | null; color?: string }[];
+  label?: string | number;
+  format: (value: number) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const entry = payload[0];
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] shadow-lift">
+      <p className="mb-1 font-semibold text-gray-900">{label}</p>
+      <p className="flex items-center gap-2">
+        <span
+          className="h-2 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: entry.color }}
+        />
+        <span className="text-gray-600">{entry.name}</span>
+        <span className="nums ml-auto font-semibold text-gray-900">
+          {entry.value == null ? 'no sales' : format(entry.value)}
+        </span>
+      </p>
     </div>
   );
 }

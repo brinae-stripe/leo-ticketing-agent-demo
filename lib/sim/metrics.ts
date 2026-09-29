@@ -1,6 +1,6 @@
 import { DAY, NOW, QUARTER_START, SCALE_FACTOR, TREND_WEEKS, WEEK } from './constants';
 import type { SimIndex } from './dataset';
-import type { Charge, SimDataset } from './types';
+import type { Charge, EventStatus, OrganizerCategory, SimDataset } from './types';
 
 const div = (a: number, b: number) => (b === 0 ? 0 : a / b);
 
@@ -541,6 +541,219 @@ export function organizerSummary(
     available: balance?.available ?? 0,
     pending: balance?.pending ?? 0,
     outstandingServiceFees: outstanding,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Per-event view                                                             */
+/* -------------------------------------------------------------------------- */
+
+export interface EventRow {
+  id: string;
+  name: string;
+  venue: string;
+  city: string;
+  startsAt: number;
+  status: EventStatus;
+  accountId: string;
+  organizerName: string;
+  category: OrganizerCategory;
+  /** Tickets issued — the sum of metadata.quantity on paid charges. */
+  tickets: number;
+  orders: number;
+  attempts: number;
+  successRate: number;
+  gross: number;
+  refunded: number;
+  net: number;
+  disputes: number;
+  /** Gate scans, which is what "attended" means on the platform side. */
+  scanned: number;
+}
+
+/**
+ * One row per event, joined across Stripe charges and the platform's own event
+ * catalogue. This is the join Stripe cannot do on its own: `charges` knows the
+ * money, `events` knows what the money was for.
+ */
+export function eventRows(data: SimDataset, index: SimIndex): EventRow[] {
+  const disputedCharges = new Set(data.disputes.map((d) => d.charge_id));
+
+  return data.events
+    .map((event) => {
+      const account = index.accountById.get(event.account_id);
+      const charges = index.chargesByEvent.get(event.id) ?? [];
+      const paid = charges.filter((c) => c.paid);
+
+      let tickets = 0;
+      let gross = 0;
+      let refunded = 0;
+      let disputes = 0;
+      let scanned = 0;
+      for (const charge of paid) {
+        tickets += Number(charge.metadata.quantity);
+        gross += charge.amount;
+        refunded += charge.amount_refunded;
+        if (disputedCharges.has(charge.id)) disputes += 1;
+        if (index.admissionByCharge.has(charge.id)) scanned += 1;
+      }
+
+      return {
+        id: event.id,
+        name: event.name,
+        venue: event.venue,
+        city: event.city,
+        startsAt: event.starts_at,
+        status: event.status,
+        accountId: event.account_id,
+        organizerName: account?.business_profile_name ?? 'Unknown organizer',
+        category: account?.metadata.organizer_category ?? 'fandom_convention',
+        tickets,
+        orders: paid.length,
+        attempts: charges.length,
+        successRate: div(paid.length, charges.length),
+        gross,
+        refunded,
+        net: gross - refunded,
+        disputes,
+        scanned,
+      };
+    })
+    .sort((a, b) => b.startsAt - a.startsAt);
+}
+
+/** One price level (ticket tier) on an event, with its issued inventory. */
+export interface PriceLevel {
+  tier: string;
+  /** Tickets successfully purchased. */
+  issued: number;
+  orders: number;
+  gross: number;
+  /** Per-ticket average, which is the price level's effective price. */
+  averagePrice: number;
+  refunded: number;
+  shareOfGross: number;
+}
+
+export interface EventActivityPoint {
+  /** Start of the day, epoch seconds. */
+  day: number;
+  tickets: number;
+  revenue: number;
+  orders: number;
+  attempts: number;
+}
+
+export interface EventDetail extends EventRow {
+  priceLevels: PriceLevel[];
+  /** Daily sales for the window ending at the event, or at "now" if upcoming. */
+  activity: EventActivityPoint[];
+  /** Tickets sold in person at a reader, as a share of all tickets. */
+  boxOfficeShare: number;
+  walletShare: number;
+  /** Scans as a share of tickets issued. Only meaningful once an event is past. */
+  attendanceRate: number;
+  /** Outstanding service fee on this event, if the organizer settles post-event. */
+  serviceFeeOwed: number;
+  serviceFeeSettled: boolean;
+}
+
+/**
+ * Everything the event overview page shows, derived rather than stored.
+ *
+ * The activity window deliberately ends at the event date for a past event and
+ * at "now" for one still on sale — a sales curve that runs past the doors
+ * opening is noise, and the shape before them is the part anyone reads.
+ */
+export function eventDetail(
+  data: SimDataset,
+  index: SimIndex,
+  eventId: string,
+  activityDays = 30,
+): EventDetail | null {
+  const base = eventRows(data, index).find((row) => row.id === eventId);
+  if (!base) return null;
+
+  const charges = index.chargesByEvent.get(eventId) ?? [];
+  const paid = charges.filter((c) => c.paid);
+
+  /* --------------------------- price levels ------------------------------ */
+
+  const byTier = new Map<string, PriceLevel>();
+  for (const charge of paid) {
+    const tier = charge.metadata.tier;
+    let level = byTier.get(tier);
+    if (!level) {
+      level = {
+        tier,
+        issued: 0,
+        orders: 0,
+        gross: 0,
+        averagePrice: 0,
+        refunded: 0,
+        shareOfGross: 0,
+      };
+      byTier.set(tier, level);
+    }
+    level.issued += Number(charge.metadata.quantity);
+    level.orders += 1;
+    level.gross += charge.amount;
+    level.refunded += charge.amount_refunded;
+  }
+  const priceLevels = Array.from(byTier.values()).sort((a, b) => b.gross - a.gross);
+  for (const level of priceLevels) {
+    level.averagePrice = div(level.gross, level.issued);
+    level.shareOfGross = div(level.gross, base.gross);
+  }
+
+  /* ---------------------------- activity --------------------------------- */
+
+  const windowEnd = Math.min(base.startsAt, NOW);
+  const windowStart = windowEnd - activityDays * DAY;
+  const buckets = new Map<number, EventActivityPoint>();
+  for (let day = windowStart; day <= windowEnd; day += DAY) {
+    const key = Math.floor(day / DAY) * DAY;
+    buckets.set(key, { day: key, tickets: 0, revenue: 0, orders: 0, attempts: 0 });
+  }
+  for (const charge of charges) {
+    const key = Math.floor(charge.created / DAY) * DAY;
+    const bucket = buckets.get(key);
+    if (!bucket) continue;
+    bucket.attempts += 1;
+    if (!charge.paid) continue;
+    bucket.orders += 1;
+    bucket.tickets += Number(charge.metadata.quantity);
+    bucket.revenue += charge.amount - charge.amount_refunded;
+  }
+
+  /* ------------------------------ mix ------------------------------------ */
+
+  let boxOfficeTickets = 0;
+  let walletOrders = 0;
+  for (const charge of paid) {
+    if (charge.payment_method_details_type === 'card_present') {
+      boxOfficeTickets += Number(charge.metadata.quantity);
+    }
+    if (
+      charge.card_wallet_type === 'apple_pay' ||
+      charge.card_wallet_type === 'google_pay' ||
+      charge.card_wallet_type === 'link'
+    ) {
+      walletOrders += 1;
+    }
+  }
+
+  const ledgerRow = data.service_fee_ledger.find((row) => row.event_id === eventId);
+
+  return {
+    ...base,
+    priceLevels,
+    activity: Array.from(buckets.values()).sort((a, b) => a.day - b.day),
+    boxOfficeShare: div(boxOfficeTickets, base.tickets),
+    walletShare: div(walletOrders, paid.length),
+    attendanceRate: div(base.scanned, base.orders),
+    serviceFeeOwed: ledgerRow?.fee_owed ?? 0,
+    serviceFeeSettled: ledgerRow?.settled ?? false,
   };
 }
 
