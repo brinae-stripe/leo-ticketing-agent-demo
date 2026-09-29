@@ -31,7 +31,7 @@ export function idempotencyKey(label: string): string {
     raw.slice(16, 20),
     raw.slice(20, 32),
   ].join('-');
-  return `stagegate-${label}-${uuid}`;
+  return `marquee-${label}-${uuid}`;
 }
 
 export function requestId(): string {

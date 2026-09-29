@@ -8,17 +8,17 @@ import { SimGate } from '@/components/layout/sim-gate';
 import { Badge, Card, Input, Select, Skeleton } from '@/components/ui/primitives';
 import { CATEGORY_PROFILES } from '@/lib/sim/catalog';
 import { isoToShortDate, money, percent } from '@/lib/sim/format';
-import { topHostsByVolume } from '@/lib/sim/metrics';
-import type { HostCategory } from '@/lib/sim/types';
+import { topOrganizersByVolume } from '@/lib/sim/metrics';
+import type { OrganizerCategory } from '@/lib/sim/types';
 import { useSim } from '@/lib/store/sim-store';
 
 type StatusFilter = 'all' | 'payouts_blocked' | 'charges_disabled' | 'negative_balance' | 'healthy';
 
-export function HostsList() {
+export function OrganizersList() {
   return (
     <div className="mx-auto max-w-[84rem] px-4 py-8 sm:px-6">
       <header className="mb-6">
-        <h1 className="font-display text-[26px] font-black text-gray-900">Event hosts</h1>
+        <h1 className="font-display text-[26px] font-black text-gray-900">Event organizers</h1>
         <p className="mt-1.5 text-[14px] text-gray-500">
           Every connected account on the platform, with the state that matters before their
           next event.
@@ -39,21 +39,21 @@ export function HostsList() {
           </div>
         }
       >
-        <HostsTable />
+        <OrganizersTable />
       </SimGate>
     </div>
   );
 }
 
-function HostsTable() {
+function OrganizersTable() {
   const { data, index } = useSim();
 
   const [query, setQuery] = React.useState('');
-  const [category, setCategory] = React.useState<'all' | HostCategory>('all');
+  const [category, setCategory] = React.useState<'all' | OrganizerCategory>('all');
   const [status, setStatus] = React.useState<StatusFilter>('all');
 
   const volumes = React.useMemo(
-    () => new Map(topHostsByVolume(data, index, 500).map((row) => [row.accountId, row])),
+    () => new Map(topOrganizersByVolume(data, index, 500).map((row) => [row.accountId, row])),
     [data, index],
   );
   const balances = React.useMemo(
@@ -81,7 +81,7 @@ function HostsTable() {
         if (needle && !row.account.business_profile_name.toLowerCase().includes(needle)) {
           if (!row.account.id.toLowerCase().includes(needle)) return false;
         }
-        if (category !== 'all' && row.account.metadata.host_category !== category) return false;
+        if (category !== 'all' && row.account.metadata.organizer_category !== category) return false;
         if (status === 'payouts_blocked' && row.account.payouts_enabled) return false;
         if (status === 'charges_disabled' && row.account.charges_enabled) return false;
         if (status === 'negative_balance' && row.available >= 0) return false;
@@ -96,7 +96,7 @@ function HostsTable() {
       .sort((a, b) => b.volume - a.volume);
   }, [balances, category, data.accounts, index.readersByAccount, query, status, volumes]);
 
-  const categories = Object.keys(CATEGORY_PROFILES) as HostCategory[];
+  const categories = Object.keys(CATEGORY_PROFILES) as OrganizerCategory[];
 
   return (
     <>
@@ -106,14 +106,14 @@ function HostsTable() {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search hosts or account ids"
+            placeholder="Search organizers or account ids"
             className="h-9 pl-9 text-[13px]"
-            aria-label="Search hosts"
+            aria-label="Search organizers"
           />
         </div>
         <Select
           value={category}
-          onChange={(event) => setCategory(event.target.value as 'all' | HostCategory)}
+          onChange={(event) => setCategory(event.target.value as 'all' | OrganizerCategory)}
           aria-label="Filter by category"
         >
           <option value="all">All categories</option>
@@ -144,7 +144,7 @@ function HostsTable() {
           <table className="w-full border-collapse text-[13px]">
             <thead className="bg-gray-50">
               <tr className="border-b border-gray-200 text-[11.5px] uppercase tracking-wide text-gray-500">
-                <th className="px-4 py-2.5 text-left font-semibold">Host</th>
+                <th className="px-4 py-2.5 text-left font-semibold">Organizer</th>
                 <th className="px-4 py-2.5 text-left font-semibold">Category</th>
                 <th className="px-4 py-2.5 text-left font-semibold">Next event</th>
                 <th className="px-4 py-2.5 text-right font-semibold">Net volume</th>
@@ -161,7 +161,7 @@ function HostsTable() {
                 >
                   <td className="px-4 py-2.5">
                     <Link
-                      href={`/hosts/${row.account.id}`}
+                      href={`/organizers/${row.account.id}`}
                       className="font-semibold text-gray-900 hover:text-blue-600 hover:underline"
                     >
                       {row.account.business_profile_name}
@@ -171,7 +171,7 @@ function HostsTable() {
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-gray-600">
-                    {CATEGORY_PROFILES[row.account.metadata.host_category].label}
+                    {CATEGORY_PROFILES[row.account.metadata.organizer_category].label}
                   </td>
                   <td className="nums px-4 py-2.5 text-gray-600">
                     {row.account.metadata.next_event_date
@@ -209,7 +209,7 @@ function HostsTable() {
         </div>
         {rows.length === 0 && (
           <p className="px-4 py-10 text-center text-[13px] text-gray-500">
-            No hosts match those filters.
+            No organizers match those filters.
           </p>
         )}
       </Card>

@@ -30,7 +30,7 @@ export const invoiceSponsor: Scenario = {
 
   async run(ctx): Promise<ScenarioResult> {
     const accountId = ctx.accountId!;
-    const host = ctx.index.accountById.get(accountId)!;
+    const organizer = ctx.index.accountById.get(accountId)!;
 
     const reachSql = sql`
 -- Sponsorship is priced on reach, and reach is something the ticketing data can
@@ -82,7 +82,7 @@ ORDER BY created DESC`;
     if (!event) {
       return {
         answer: [
-          `${host.business_profile_name} has no completed events in the data window, so there is no attendance to price a sponsorship against yet. Once a show has run, this will build the invoice from tickets sold, distinct buyers and scanned admissions.`,
+          `${organizer.business_profile_name} has no completed events in the data window, so there is no attendance to price a sponsorship against yet. Once a show has run, this will build the invoice from tickets sold, distinct buyers and scanned admissions.`,
         ],
         queries: [
           { label: 'Recent events and reach', sql: reachSql, result: reach },
@@ -101,12 +101,12 @@ ORDER BY created DESC`;
     const gross = num(event, 'gross_volume');
     const scanned = num(admissions.rows[0], 'admissions_scanned');
 
-    // Sponsor selection is stable per host so the demo reads the same each run.
+    // Sponsor selection is stable per organizer so the demo reads the same each run.
     const sponsorIndex =
-      Array.from(host.id).reduce((sum, char) => sum + char.charCodeAt(0), 0) %
+      Array.from(organizer.id).reduce((sum, char) => sum + char.charCodeAt(0), 0) %
       SPONSOR_NAMES.length;
     const sponsor = SPONSOR_NAMES[sponsorIndex];
-    const sponsorCustomerId = `cus_sponsor_${host.id.slice(5, 15)}`;
+    const sponsorCustomerId = `cus_sponsor_${organizer.id.slice(5, 15)}`;
 
     // Rate card: priced off reach, rounded to something a human would write down.
     const round = (cents: number) => Math.max(25_000, Math.round(cents / 25_000) * 25_000);
@@ -178,7 +178,7 @@ ORDER BY created DESC`;
           method: 'POST',
           path: '/v1/invoices',
           stripeAccount: accountId,
-          plainEnglish: `Creates a draft invoice for ${sponsor} on ${host.business_profile_name}, adds the ${lines.length} line items, and finalises it. Once finalised, Stripe hosts a payable invoice page and the sponsor can pay by card or bank transfer. Net 30.`,
+          plainEnglish: `Creates a draft invoice for ${sponsor} on ${organizer.business_profile_name}, adds the ${lines.length} line items, and finalises it. Once finalised, Stripe organizers a payable invoice page and the sponsor can pay by card or bank transfer. Net 30.`,
           params: {
             invoice: {
               customer: sponsorCustomerId,

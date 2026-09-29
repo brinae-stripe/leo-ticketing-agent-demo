@@ -64,7 +64,7 @@ export interface ResolutionCard {
   bullets?: string[];
 }
 
-/** A row the agent wants a decision on — one dispute, one review, one host. */
+/** A row the agent wants a decision on — one dispute, one review, one organizer. */
 export interface ScenarioItem {
   id: string;
   title: string;
@@ -102,7 +102,7 @@ export interface ScenarioContext {
   sql: (sql: string) => Promise<QueryResult>;
   /** Set for organizer scenarios — the single connected account in scope. */
   accountId?: string;
-  /** The raw question, so a scenario can pick a host name out of it. */
+  /** The raw question, so a scenario can pick a organizer name out of it. */
   query: string;
 }
 

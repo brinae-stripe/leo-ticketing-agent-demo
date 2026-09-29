@@ -10,7 +10,7 @@
  * because reader state is not a warehouse concept.
  */
 
-export type HostCategory =
+export type OrganizerCategory =
   | 'fandom_convention'
   | 'comic_convention'
   | 'immersive_museum'
@@ -29,9 +29,9 @@ export type HostCategory =
 export type AccountType = 'express' | 'custom';
 
 /**
- * How StageGate collects its service fee from a host.
+ * How Marquee collects its service fee from a organizer.
  * - `on_charge`  — application_fee_amount is taken at charge time.
- * - `post_event` — StageGate invoices or debits the host after the event.
+ * - `post_event` — Marquee invoices or debits the organizer after the event.
  * The settlement scenario exists because of the second group.
  */
 export type SettlementMode = 'on_charge' | 'post_event';
@@ -49,7 +49,7 @@ export interface Account {
   requirements_current_deadline: number | null;
   payout_schedule_interval: 'daily' | 'weekly' | 'monthly' | 'manual';
   metadata: {
-    host_category: HostCategory;
+    organizer_category: OrganizerCategory;
     next_event_date: string | null;
     settlement_mode: SettlementMode;
     service_fee_percent: string;
@@ -59,7 +59,7 @@ export interface Account {
 
 export type EventStatus = 'on_sale' | 'completed' | 'cancelled';
 
-/** Platform-side table. StageGate's own product data, not a Stripe object. */
+/** Platform-side table. Marquee's own product data, not a Stripe object. */
 export interface PlatformEvent {
   id: string;
   account_id: string;
@@ -262,7 +262,7 @@ export interface AccountBalance {
   currency: string;
 }
 
-/** Outstanding StageGate service fees for post_event hosts. */
+/** Outstanding Marquee service fees for post_event organizers. */
 export interface ServiceFeeLedgerRow {
   account_id: string;
   event_id: string;
@@ -290,7 +290,7 @@ export interface SimDataset {
   terminal_readers: TerminalReader[];
   admissions: Admission[];
   account_balances: AccountBalance[];
-  /** Single row: StageGate's own platform balance. */
+  /** Single row: Marquee's own platform balance. */
   platform_balances: AccountBalance[];
   service_fee_ledger: ServiceFeeLedgerRow[];
   radar_value_list_items: RadarValueListItem[];
@@ -301,7 +301,7 @@ export interface SimDataset {
   query_runs: SimQueryRun[];
   payment_method_configurations: PaymentMethodConfiguration[];
   /**
-   * Organizer-raised asks that need a human at StageGate to look at them.
+   * Organizer-raised asks that need a human at Marquee to look at them.
    * Enabling a pay-over-time method is a commercial decision as well as a
    * technical one, so the copilot files a request rather than flipping it on.
    */

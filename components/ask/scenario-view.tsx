@@ -140,7 +140,7 @@ function ItemCard({
               href={item.href}
               className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-medium text-blue-600 hover:underline"
             >
-              Open host
+              Open organizer
               <ExternalLink className="h-3 w-3" />
             </Link>
           )}

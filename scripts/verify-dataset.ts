@@ -113,23 +113,23 @@ row('open reviews', String(openReviews), String(FIXTURES.openReviews), openRevie
 const upcoming = new Set(
   data.events.filter((e) => e.starts_at > NOW && e.starts_at <= NOW + 14 * DAY && e.status === 'on_sale').map((e) => e.account_id),
 );
-const blockedHosts = data.accounts.filter((a) => !a.payouts_enabled && upcoming.has(a.id)).length;
-row('hosts w/ event in 14d, payouts disabled', String(blockedHosts), `~${FIXTURES.hostsBlockedFromPayouts}`, blockedHosts >= 8);
+const blockedOrganizers = data.accounts.filter((a) => !a.payouts_enabled && upcoming.has(a.id)).length;
+row('organizers w/ event in 14d, payouts disabled', String(blockedOrganizers), `~${FIXTURES.organizersBlockedFromPayouts}`, blockedOrganizers >= 8);
 
 const negative = data.account_balances.filter((b) => b.available < 0).length;
-row('hosts with negative balance', String(negative), String(FIXTURES.negativeBalanceHosts), negative === FIXTURES.negativeBalanceHosts);
+row('organizers with negative balance', String(negative), String(FIXTURES.negativeBalanceOrganizers), negative === FIXTURES.negativeBalanceOrganizers);
 
 const cancelEvent = data.events.find((e) => e.name.includes('Autumn Sessions'));
 const cancelCharges = charges.filter((c) => c.metadata.event_id === cancelEvent?.id).length;
 row('charges on the event to cancel', String(cancelCharges), String(FIXTURES.cancellingEventChargeCount), cancelCharges === FIXTURES.cancellingEventChargeCount);
 
 const offline = data.terminal_readers.filter((r) => r.status === 'offline').length;
-row('offline readers (all hosts)', String(offline), '>= 4', offline >= 4);
+row('offline readers (all organizers)', String(offline), '>= 4', offline >= 4);
 
 console.log('\nfee movement (what the fee explainer narrates)');
 
-// Effective *Stripe* cost only. StageGate's own application fee is revenue, not
-// cost, so it is excluded — otherwise week-to-week swings in which hosts are on
+// Effective *Stripe* cost only. Marquee's own application fee is revenue, not
+// cost, so it is excluded — otherwise week-to-week swings in which organizers are on
 // on-charge billing would drown out the real signal.
 const stripeFeeByBt = new Map<string, number>();
 for (const detail of data.balance_transaction_fee_details) {
@@ -196,12 +196,12 @@ row(
 const lastWeekLedger = data.service_fee_ledger.filter(
   (r) => !r.settled && r.period_end >= NOW - 7 * DAY && r.period_end <= NOW,
 );
-const owedHosts = new Set(lastWeekLedger.map((r) => r.account_id)).size;
+const owedOrganizers = new Set(lastWeekLedger.map((r) => r.account_id)).size;
 row(
-  "hosts owing service fees (last week's events)",
-  `${owedHosts} hosts / $${(lastWeekLedger.reduce((s, r) => s + r.fee_owed, 0) / 100).toFixed(0)}`,
-  '>= 3 hosts',
-  owedHosts >= 3,
+  "organizers owing service fees (last week's events)",
+  `${owedOrganizers} organizers / $${(lastWeekLedger.reduce((s, r) => s + r.fee_owed, 0) / 100).toFixed(0)}`,
+  '>= 3 organizers',
+  owedOrganizers >= 3,
 );
 
 const platformBalance = data.platform_balances[0];
@@ -212,18 +212,18 @@ row(
   platformBalance.available > 0,
 );
 
-const cancelHostBalance = data.account_balances.find(
+const cancelOrganizerBalance = data.account_balances.find(
   (b) => b.account_id === data.accounts.find((a) => a.business_profile_name === 'Riverlight Music Festival')!.id,
 )!;
 const cancelTotal = charges
   .filter((c) => c.metadata.event_id === cancelEvent?.id && c.paid)
   .reduce((s, c) => s + c.amount, 0);
 console.log(
-  `  --   refund exposure on the cancelling event  $${(cancelTotal / 100).toFixed(0)}  vs host available $${(cancelHostBalance.available / 100).toFixed(0)}`,
+  `  --   refund exposure on the cancelling event  $${(cancelTotal / 100).toFixed(0)}  vs organizer available $${(cancelOrganizerBalance.available / 100).toFixed(0)}`,
 );
 
-const readerHostCount = new Set(data.terminal_readers.map((r) => r.account_id)).size;
-console.log(`  --   hosts with card readers  ${readerHostCount}`);
+const readerOrganizerCount = new Set(data.terminal_readers.map((r) => r.account_id)).size;
+console.log(`  --   organizers with card readers  ${readerOrganizerCount}`);
 
 console.log('\nplatform scale');
 console.log(`  sampled attempts  ${charges.length.toLocaleString()}`);

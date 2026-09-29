@@ -85,7 +85,7 @@ function AuditBody() {
       <EmptyState
         icon={<ScrollText className="h-7 w-7" />}
         title="Nothing has been executed yet"
-        description="Approve an action from the Ask page or an organizer copilot and it will appear here with its full request and response."
+        description="Approve an action from the LEO page or an organizer copilot and it will appear here with its full request and response."
       />
     );
   }
@@ -203,7 +203,7 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
               <>
                 <span aria-hidden>·</span>
                 <Link
-                  href={`/hosts/${entry.stripeAccount}`}
+                  href={`/organizers/${entry.stripeAccount}`}
                   className="font-medium text-blue-600 hover:underline"
                   onClick={(event) => event.stopPropagation()}
                 >

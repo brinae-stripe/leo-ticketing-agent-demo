@@ -19,7 +19,7 @@ import { DASHBOARD_ONLY } from '@/lib/stripe-sim/dashboard-only';
 export const metadata: Metadata = {
   title: 'How it works',
   description:
-    'The architecture behind StageGate Ask, what is simulated, and where the boundaries are.',
+    'The architecture behind Marquee LEO, what is simulated, and where the boundaries are.',
 };
 
 const MCP_TOOLS = [
@@ -40,11 +40,11 @@ const API_CALLS = [
   { path: 'POST /v1/disputes/:id/close', why: 'Accepting a dispute.' },
   { path: 'POST /v1/reviews/:id/approve', why: 'Releasing a Radar review.' },
   { path: 'POST /v1/radar/value_list_items', why: 'Block and allow lists.' },
-  { path: 'POST /v1/transfers', why: 'Account debits — Stripe-Account is the host, destination is the platform.' },
+  { path: 'POST /v1/transfers', why: 'Account debits — Stripe-Account is the organizer, destination is the platform.' },
   { path: 'POST /v1/transfers/:id/reversals', why: 'Clawing a transfer back.' },
   { path: 'POST /v1/accounts/:id', why: 'Changing a payout schedule.' },
   { path: 'POST /v1/account_links', why: 'Onboarding links.' },
-  { path: 'POST /v1/payouts', why: 'Instant payouts, in the host context.' },
+  { path: 'POST /v1/payouts', why: 'Instant payouts, in the organizer context.' },
   { path: 'POST /v1/payment_method_configurations/:id', why: 'Turning wallets or pay-over-time on.' },
   { path: 'POST /v1/reporting/report_runs', why: 'Itemized fee and reconciliation reports.' },
   { path: 'POST /v1/sigma/query_runs', why: 'Scheduling a query.' },
@@ -62,7 +62,7 @@ export default function Page() {
           </h1>
           <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-white/70">
             <Wordmark className="text-[15px]" /> is a fictional ticketing platform. The data,
-            the hosts and the events are all generated. So is every API call. What is real is
+            the organizers and the events are all generated. So is every API call. What is real is
             the shape: the table names, the endpoints, the approval flow, and the places where
             an agent has to stop and ask a human.
           </p>
@@ -344,7 +344,7 @@ function DataSection() {
         The data
       </h2>
       <p className="mt-1.5 max-w-3xl text-[14px] leading-relaxed text-gray-600">
-        {TOTAL_CHARGES.toLocaleString('en-US')} charge rows across {TOTAL_ACCOUNTS} hosts,
+        {TOTAL_CHARGES.toLocaleString('en-US')} charge rows across {TOTAL_ACCOUNTS} organizers,
         generated from a fixed seed so every run of this demo is byte-identical. &ldquo;Now&rdquo;
         is pinned to <code className="font-mono text-[12.5px]">{NOW_ISO}</code> — nothing drifts
         as the real clock moves.
@@ -489,7 +489,7 @@ function ScenarioSection() {
                     <p className="text-[13px] font-semibold text-gray-900">
                       {group.heading === 'Internal operations' ? (
                         <Link
-                          href={`/ask?q=${encodeURIComponent(scenario.suggestedPrompt)}`}
+                          href={`/leo?q=${encodeURIComponent(scenario.suggestedPrompt)}`}
                           className="text-blue-600 hover:underline"
                         >
                           {scenario.suggestedPrompt}
@@ -507,7 +507,7 @@ function ScenarioSection() {
               {group.heading === 'Organizer copilot' && (
                 <p className="mt-4 text-[12.5px] leading-relaxed text-gray-500">
                   Organizer scenarios only run scoped to a single connected account — open any
-                  host and use the Organizer copilot tab.
+                  organizer and use the Organizer copilot tab.
                 </p>
               )}
             </CardBody>

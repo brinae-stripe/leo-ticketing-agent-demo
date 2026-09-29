@@ -20,7 +20,7 @@ import {
   DISPUTE_REASONS,
   FRAUD_TYPES,
   GATES,
-  HERO_HOSTS,
+  HERO_ORGANIZERS,
   MASCOTS,
   NON_US_COUNTRIES,
   PLACE_WORDS,
@@ -36,7 +36,7 @@ import type {
   Charge,
   Dispute,
   EarlyFraudWarning,
-  HostCategory,
+  OrganizerCategory,
   PaymentMethodConfiguration,
   PaymentMethodType,
   Payout,
@@ -183,12 +183,12 @@ export function generateDataset(seed: number = SEED): SimDataset {
   const accountVolumeWeight = new Map<string, number>();
   const accountCity = new Map<string, string>();
 
-  const categories = Object.keys(CATEGORY_PROFILES) as HostCategory[];
+  const categories = Object.keys(CATEGORY_PROFILES) as OrganizerCategory[];
   const usedNames = new Set<string>();
 
   function pushAccount(
     name: string,
-    category: HostCategory,
+    category: OrganizerCategory,
     city: string,
     volumeMultiplier: number,
     type: 'express' | 'custom',
@@ -213,7 +213,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
         ['monthly' as const, 8],
       ]),
       metadata: {
-        host_category: category,
+        organizer_category: category,
         next_event_date: null,
         settlement_mode: settlementMode,
         service_fee_percent: settlementMode === 'on_charge' ? '0.035' : '0.042',
@@ -227,7 +227,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
     return account;
   }
 
-  for (const hero of HERO_HOSTS) {
+  for (const hero of HERO_ORGANIZERS) {
     pushAccount(hero.name, hero.category, hero.city, hero.volumeMultiplier, hero.type);
   }
 
@@ -269,7 +269,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
     nameOverride?: string,
     statusOverride?: PlatformEvent['status'],
   ): PlatformEvent {
-    const profile = CATEGORY_PROFILES[account.metadata.host_category];
+    const profile = CATEGORY_PROFILES[account.metadata.organizer_category];
     const city = accountCity.get(account.id) ?? 'Chicago';
     const year = new Date(startsAt * 1000).getUTCFullYear();
     const month = new Date(startsAt * 1000).toLocaleString('en-US', {
@@ -301,15 +301,15 @@ export function generateDataset(seed: number = SEED): SimDataset {
   );
 
   const heroIds = new Set(
-    HERO_HOSTS.map((hero) => accountByName.get(hero.name)?.id).filter(
+    HERO_ORGANIZERS.map((hero) => accountByName.get(hero.name)?.id).filter(
       (id): id is string => Boolean(id),
     ),
   );
 
   for (const account of accounts) {
-    const profile = CATEGORY_PROFILES[account.metadata.host_category];
+    const profile = CATEGORY_PROFILES[account.metadata.organizer_category];
     const [minEvents, maxEvents] = profile.eventsPerQuarter;
-    // Hero hosts get richer histories: the per-event trends and the
+    // Hero organizers get richer histories: the per-event trends and the
     // repeat-buyer-across-events signal need more than one show to be worth
     // reading.
     const count = heroIds.has(account.id)
@@ -396,7 +396,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
 
   function fingerprintFor(accountId: string): { fingerprint: string; customer: string; repeat: boolean } {
     const pool = fingerprintPool.get(accountId) ?? [];
-    // ~29% of buyers at a given host have bought there before.
+    // ~29% of buyers at a given organizer have bought there before.
     if (pool.length > 40 && rngCharge.bool(0.29)) {
       const fingerprint = rngCharge.pick(pool);
       return { fingerprint, customer: `cus_${fingerprint.slice(0, 14)}`, repeat: true };
@@ -411,7 +411,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
     const count = chargeBudget.get(event.id) ?? 0;
     if (count === 0) continue;
     const account = accountById.get(event.account_id)!;
-    const profile = CATEGORY_PROFILES[account.metadata.host_category];
+    const profile = CATEGORY_PROFILES[account.metadata.organizer_category];
 
     const windowStart = Math.max(QUARTER_START, event.starts_at - 120 * DAY);
     const windowEnd = Math.min(NOW, event.starts_at);
@@ -621,12 +621,12 @@ export function generateDataset(seed: number = SEED): SimDataset {
   const transfers: Transfer[] = [];
 
   /**
-   * What StageGate keeps, per charge, before it settles service fees.
+   * What Marquee keeps, per charge, before it settles service fees.
    *
-   * On-charge hosts: application_fee_amount is taken at charge time, so the
+   * On-charge organizers: application_fee_amount is taken at charge time, so the
    * platform nets (application fee − Stripe fee) immediately.
    *
-   * Post-event hosts: the transfer is net of the Stripe fee only, so processing
+   * Post-event organizers: the transfer is net of the Stripe fee only, so processing
    * cost is passed through straight away and the platform nets zero until it
    * bills or debits its service fee after the event. That gap is precisely what
    * the settlement scenario exists to close.
@@ -678,7 +678,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
         amount: applicationFee,
         currency: CURRENCY,
         type: 'application_fee',
-        description: 'StageGate service fee',
+        description: 'Marquee service fee',
       });
     }
     charge.balance_transaction_id = btId;
@@ -960,18 +960,18 @@ export function generateDataset(seed: number = SEED): SimDataset {
     'settings.dashboard.display_name',
   ];
 
-  // 12 hosts with an event in the next 14 days who cannot be paid out.
+  // 12 organizers with an event in the next 14 days who cannot be paid out.
   const blockedCandidates = accounts.filter((a) => {
     const soon = (upcomingByAccount.get(a.id) ?? []).some(
       (e) => e.starts_at <= NOW + 14 * DAY,
     );
     return soon && a.business_profile_name !== 'Riverlight Music Festival';
   });
-  const blockedHosts = rngFixture.sample(
+  const blockedOrganizers = rngFixture.sample(
     blockedCandidates,
-    FIXTURES.hostsBlockedFromPayouts,
+    FIXTURES.organizersBlockedFromPayouts,
   );
-  for (const account of blockedHosts) {
+  for (const account of blockedOrganizers) {
     const due = rngFixture.sample(REQUIREMENT_FIELDS, rngFixture.int(1, 3));
     const pastDue = rngFixture.bool(0.42) ? due.slice(0, 1) : [];
     account.payouts_enabled = false;
@@ -1001,11 +1001,11 @@ export function generateDataset(seed: number = SEED): SimDataset {
     }
   }
 
-  const negativeBalanceHosts = rngFixture.sample(
+  const negativeBalanceOrganizers = rngFixture.sample(
     accounts.filter((a) => (grossByAccount.get(a.id) ?? 0) > 0),
-    FIXTURES.negativeBalanceHosts,
+    FIXTURES.negativeBalanceOrganizers,
   );
-  const negativeIds = new Set(negativeBalanceHosts.map((a) => a.id));
+  const negativeIds = new Set(negativeBalanceOrganizers.map((a) => a.id));
 
   for (const account of accounts) {
     const gross = grossByAccount.get(account.id) ?? 0;
@@ -1075,7 +1075,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
   /* ------------------------ terminal readers ----------------------------- */
 
   const terminal_readers: TerminalReader[] = [];
-  const readerHosts = [
+  const readerOrganizers = [
     accountByName.get('Cascade Aquarium')!,
     accountByName.get('Harbor City Hounds Baseball')!,
     accountByName.get('Northgate Renaissance Faire')!,
@@ -1085,22 +1085,22 @@ export function generateDataset(seed: number = SEED): SimDataset {
     accountByName.get('Nebula Fan Expo')!,
     accountByName.get('Ink & Panel Comic Fest')!,
     ...rngFixture.sample(
-      accounts.filter((a) => CATEGORY_PROFILES[a.metadata.host_category].cardPresentBias > 0.28),
+      accounts.filter((a) => CATEGORY_PROFILES[a.metadata.organizer_category].cardPresentBias > 0.28),
       4,
     ),
   ];
 
-  const seenReaderHosts = new Set<string>();
-  for (const account of readerHosts) {
-    if (seenReaderHosts.has(account.id)) continue;
-    seenReaderHosts.add(account.id);
+  const seenReaderOrganizers = new Set<string>();
+  for (const account of readerOrganizers) {
+    if (seenReaderOrganizers.has(account.id)) continue;
+    seenReaderOrganizers.add(account.id);
     const isAquarium = account.business_profile_name === FIXTURES.offlineReaderVenue;
     const locationCount = isAquarium ? 2 : rngFixture.int(1, 2);
     const locations = Array.from({ length: locationCount }, () =>
       rngFixture.id('tml', 16),
     );
     const readerCount = isAquarium ? 9 : rngFixture.int(2, 6);
-    const profile = CATEGORY_PROFILES[account.metadata.host_category];
+    const profile = CATEGORY_PROFILES[account.metadata.organizer_category];
     for (let i = 0; i < readerCount; i += 1) {
       // Four of the aquarium's readers dropped off the network yesterday.
       const offline = isAquarium ? i >= readerCount - 4 : rngFixture.bool(0.06);
@@ -1200,9 +1200,9 @@ export function generateDataset(seed: number = SEED): SimDataset {
 
   /* ---------------------- platform settlement ---------------------------- */
 
-  // StageGate's own payouts are derived, not invented: the platform can only
+  // Marquee's own payouts are derived, not invented: the platform can only
   // pay itself what it actually kept (application fees net of Stripe fees, plus
-  // service fees already collected from post-event hosts).
+  // service fees already collected from post-event organizers).
   const collectedServiceFees = service_fee_ledger
     .filter((row) => row.settled)
     .reduce((sum, row) => sum + row.fee_owed, 0);
@@ -1228,7 +1228,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
     paidOutSoFar += amount;
     payouts.push({
       id: rngFixture.id('po'),
-      account_id: 'acct_platform_stagegate',
+      account_id: 'acct_platform_marquee',
       amount,
       currency: CURRENCY,
       arrival_date: availableOn(created),
@@ -1242,7 +1242,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
 
   const platform_balances: AccountBalance[] = [
     {
-      account_id: 'acct_platform_stagegate',
+      account_id: 'acct_platform_marquee',
       available: platformRevenue - paidOutSoFar,
       // Funds still inside the T+2 window across every connected account.
       pending: account_balances.reduce((sum, b) => sum + b.pending, 0),
@@ -1253,11 +1253,11 @@ export function generateDataset(seed: number = SEED): SimDataset {
   /* --------------- payment method configurations ------------------------- */
 
   const payment_method_configurations: PaymentMethodConfiguration[] = [];
-  const PLATFORM_PMC_ID = 'pmc_stagegate_platform_default';
+  const PLATFORM_PMC_ID = 'pmc_marquee_platform_default';
   payment_method_configurations.push({
     id: PLATFORM_PMC_ID,
     account_id: null,
-    name: 'StageGate platform default',
+    name: 'Marquee platform default',
     is_default: true,
     parent: null,
     payment_methods: {
@@ -1273,7 +1273,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
   });
 
   for (const account of accounts) {
-    // Roughly a third of hosts have wallets switched off on their child
+    // Roughly a third of organizers have wallets switched off on their child
     // configuration — usually a leftover from how they were onboarded.
     const walletsOn = rngLedger.bool(0.66);
     const bnplOn = rngLedger.bool(0.09);

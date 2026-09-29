@@ -91,7 +91,7 @@ function flattenAccounts(data: SimDataset): Row[] {
     requirements_disabled_reason: a.requirements_disabled_reason,
     requirements_current_deadline: a.requirements_current_deadline,
     payout_schedule_interval: a.payout_schedule_interval,
-    metadata_host_category: a.metadata.host_category,
+    metadata_organizer_category: a.metadata.organizer_category,
     metadata_next_event_date: a.metadata.next_event_date,
     metadata_settlement_mode: a.metadata.settlement_mode,
     metadata_service_fee_percent: Number(a.metadata.service_fee_percent),

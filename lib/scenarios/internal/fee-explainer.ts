@@ -32,8 +32,8 @@ export const feeExplainer: Scenario = {
 
     const periodSql = sql`
 -- Effective Stripe cost, last 7 days vs the 7 days before.
--- Application fees are deliberately excluded: that line is StageGate revenue,
--- not cost, and it swings with which hosts are on on-charge billing.
+-- Application fees are deliberately excluded: that line is Marquee revenue,
+-- not cost, and it swings with which organizers are on on-charge billing.
 SELECT
   CASE WHEN bt.created >= ${weekAgo} THEN 'last_7_days' ELSE 'prior_7_days' END AS period,
   COUNT(*) AS charge_count,
@@ -193,11 +193,11 @@ ORDER BY gross_volume DESC`;
       },
       resolution: {
         headline: 'Nothing is broken — the mix changed. Get the itemized backup before anyone escalates.',
-        body: 'The move is explained by where cards were issued, not by pricing or by a Stripe change. Pull the itemized fee report so Finance can tie it out line by line, and the per-host reconciliation so you can see which hosts drove the international volume.',
+        body: 'The move is explained by where cards were issued, not by pricing or by a Stripe change. Pull the itemized fee report so Finance can tie it out line by line, and the per-organizer reconciliation so you can see which organizers drove the international volume.',
         bullets: [
           `${bpsDelta(0, mixContribution)} from cross-border mix, ${bpsDelta(0, disputeContribution)} from dispute fees`,
           'Itemized report ties every fee line back to a balance transaction',
-          'Per-host attribution shows whether this is one touring festival or a broad shift',
+          'Per-organizer attribution shows whether this is one touring festival or a broad shift',
         ],
       },
       actions: [
@@ -257,14 +257,14 @@ ORDER BY gross_volume DESC`;
             ),
         },
         {
-          id: 'fee_per_host_report',
-          label: 'Per-host attribution report',
+          id: 'fee_per_organizer_report',
+          label: 'Per-organizer attribution report',
           surface: 'api',
           callLabel: 'POST /v1/reporting/report_runs',
           method: 'POST',
           path: '/v1/reporting/report_runs',
           plainEnglish:
-            'Queues the connected-account payout reconciliation report, itemized. Shows the same fees broken down by host so you can see who the international volume belongs to.',
+            'Queues the connected-account payout reconciliation report, itemized. Shows the same fees broken down by organizer so you can see who the international volume belongs to.',
           params: {
             report_type: 'connected_account_payout_reconciliation.itemized.5',
             parameters: { interval_start: weekAgo, interval_end: T.now },

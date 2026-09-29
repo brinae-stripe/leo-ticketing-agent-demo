@@ -32,7 +32,7 @@ export const terminalReadiness: Scenario = {
   keywords: ['reader', 'readers', 'terminal', 'offline', 'online', 'gate', 'box', 'office', 'aquarium'],
 
   async run(ctx): Promise<ScenarioResult> {
-    // If the question names a host we know, use it; otherwise the venue the
+    // If the question names a organizer we know, use it; otherwise the venue the
     // suggested prompt refers to.
     const lowerQuery = ctx.query.toLowerCase();
     const named = ctx.data.accounts.find(
@@ -40,15 +40,15 @@ export const terminalReadiness: Scenario = {
         ctx.index.readersByAccount.has(account.id) &&
         lowerQuery.includes(account.business_profile_name.toLowerCase()),
     );
-    const host =
+    const organizer =
       named ??
       ctx.index.accountByName.get(FIXTURES.offlineReaderVenue) ??
       ctx.data.accounts.find((a) => ctx.index.readersByAccount.has(a.id));
 
-    if (!host) throw new Error('No host with card readers found in the dataset');
+    if (!organizer) throw new Error('No organizer with card readers found in the dataset');
 
     const readersSql = sql`
--- Reader inventory for this host. last_seen_at is the number that matters: a
+-- Reader inventory for this organizer. last_seen_at is the number that matters: a
 -- reader Stripe has not heard from in hours is not going to wake up on its own.
 SELECT
   r.id AS reader_id,
@@ -58,7 +58,7 @@ SELECT
   r.last_seen_at,
   r.location_id
 FROM terminal_readers r
-WHERE r.account_id = '${host.id}'
+WHERE r.account_id = '${organizer.id}'
 ORDER BY r.status ASC, r.label ASC`;
 
     const upcomingSql = sql`
@@ -71,7 +71,7 @@ SELECT
   starts_at,
   status
 FROM events
-WHERE account_id = '${host.id}'
+WHERE account_id = '${organizer.id}'
   AND starts_at > ${T.now}
 ORDER BY starts_at ASC
 LIMIT 3`;
@@ -84,7 +84,7 @@ SELECT
   ROUND(AVG(c.amount), 0) AS avg_order_value,
   COUNT(DISTINCT c.metadata_event_id) AS events_covered
 FROM charges c
-WHERE c.account_id = '${host.id}'
+WHERE c.account_id = '${organizer.id}'
   AND c.payment_method_details_type = 'card_present'
   AND c.paid = true
   AND c.created >= ${T.daysAgo(30)}`;
@@ -98,7 +98,7 @@ SELECT
   c.metadata_tier AS tier,
   c.card_brand
 FROM charges c
-WHERE c.account_id = '${host.id}'
+WHERE c.account_id = '${organizer.id}'
   AND c.payment_method_details_type = 'card_present'
   AND c.paid = true
   AND c.refunded = false
@@ -126,14 +126,14 @@ LIMIT 5`;
 
     const answer = [
       offline.length === 0
-        ? `Yes. All ${readers.rows.length} readers at ${host.business_profile_name} are online, most recently seen within the last few minutes.`
-        : `No — ${offline.length} of ${readers.rows.length} readers at ${host.business_profile_name} are offline. ${online.length} are online and healthy.`,
+        ? `Yes. All ${readers.rows.length} readers at ${organizer.business_profile_name} are online, most recently seen within the last few minutes.`
+        : `No — ${offline.length} of ${readers.rows.length} readers at ${organizer.business_profile_name} are offline. ${online.length} are online and healthy.`,
       offline.length > 0
         ? `The offline units are ${offline.map((row) => `${str(row, 'label')} (${str(row, 'device_type')}, last seen ${dateTime(num(row, 'last_seen_at'))})`).join('; ')}. They have been dark for between ${Math.round((T.now - Math.max(...offline.map((r) => num(r, 'last_seen_at')))) / 3600)} and ${Math.round((T.now - Math.min(...offline.map((r) => num(r, 'last_seen_at')))) / 3600)} hours, which rules out a momentary network blip.`
         : 'Nothing needs attention before the next event.',
       nextEvent
-        ? `Next up is ${str(nextEvent, 'event_name')} at ${str(nextEvent, 'venue')}, ${longDate(num(nextEvent, 'starts_at'))}. Over the last 30 days this host took ${plural(inPersonCharges, 'in-person sale')} worth ${money(inPersonVolume)} — around ${money(dailyVolume)} a day across ${readers.rows.length} readers, so roughly ${money(perReaderDaily)} of throughput per reader per day.`
-        : 'Nothing is currently on sale for this host.',
+        ? `Next up is ${str(nextEvent, 'event_name')} at ${str(nextEvent, 'venue')}, ${longDate(num(nextEvent, 'starts_at'))}. Over the last 30 days this organizer took ${plural(inPersonCharges, 'in-person sale')} worth ${money(inPersonVolume)} — around ${money(dailyVolume)} a day across ${readers.rows.length} readers, so roughly ${money(perReaderDaily)} of throughput per reader per day.`
+        : 'Nothing is currently on sale for this organizer.',
       offline.length > 0
         ? `All ${offlineLocations.size} of the affected units sit at ${offlineLocations.size === 1 ? 'a single location' : `${offlineLocations.size} of ${locations.size} locations`}, which points at the local network rather than the devices. Worth checking that before shipping replacements.`
         : '',
@@ -175,7 +175,7 @@ LIMIT 5`;
         callLabel: 'POST /v1/terminal/readers/:id/refund_payment',
         method: 'POST',
         path: `/v1/terminal/readers/${readerId}/refund_payment`,
-        stripeAccount: host.id,
+        stripeAccount: organizer.id,
         plainEnglish: `Sends a ${money(amount)} refund to ${str(onlineReader, 'label')} for charge ${chargeId}. The buyer has to present the same card at the reader to complete it — this is the interac-style flow for in-person refunds, not a card-not-present refund.`,
         params: {
           charge: chargeId,
@@ -194,7 +194,7 @@ LIMIT 5`;
           api.refundTerminalPayment(
             simCtx,
             readerId,
-            host.id,
+            organizer.id,
             {
               charge: chargeId,
               amount,
@@ -210,12 +210,12 @@ LIMIT 5`;
       answer,
       queries: [
         { label: 'Reader inventory', sql: readersSql, result: readers },
-        { label: 'Upcoming events for this host', sql: upcomingSql, result: upcoming },
+        { label: 'Upcoming events for this organizer', sql: upcomingSql, result: upcoming },
         { label: 'In-person volume, last 30 days', sql: volumeSql, result: volume },
         { label: 'Recent in-person sales', note: 'Candidates for a reader refund.', sql: refundableSql, result: refundable },
       ],
       table: {
-        caption: `All readers at ${host.business_profile_name}`,
+        caption: `All readers at ${organizer.business_profile_name}`,
         columns: [
           { key: 'label', label: 'Reader' },
           { key: 'device_type', label: 'Device' },
@@ -230,7 +230,7 @@ LIMIT 5`;
         offline.length > 0
           ? {
               headline: `${offline.length} readers need a person, not an API call.`,
-              body: `Get someone at ${str(nextEvent, 'venue') || host.business_profile_name} to power-cycle ${offline.map((r) => str(r, 'label')).join(', ')} and confirm they come back before doors. The ${online.length} online readers can cover the gate in the meantime, but at ${percent(offline.length / Math.max(1, readers.rows.length), 0)} of capacity down you should expect queues. Nothing here is fixable from this screen — what the API gives you is the list and the last-seen times.`,
+              body: `Get someone at ${str(nextEvent, 'venue') || organizer.business_profile_name} to power-cycle ${offline.map((r) => str(r, 'label')).join(', ')} and confirm they come back before doors. The ${online.length} online readers can cover the gate in the meantime, but at ${percent(offline.length / Math.max(1, readers.rows.length), 0)} of capacity down you should expect queues. Nothing here is fixable from this screen — what the API gives you is the list and the last-seen times.`,
               bullets: [
                 `${offline.length} offline, ${online.length} online, ${locations.size} location${locations.size === 1 ? '' : 's'}`,
                 `≈${money(perReaderDaily)} of daily throughput per reader`,

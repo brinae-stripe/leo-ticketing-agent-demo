@@ -86,5 +86,5 @@ export function previewHeaders(meta: CallMeta): Record<string, string> {
   return headers;
 }
 
-/** StageGate's own platform account id, used as the destination on debits. */
-export const PLATFORM_ACCOUNT_ID = 'acct_platform_stagegate';
+/** Marquee's own platform account id, used as the destination on debits. */
+export const PLATFORM_ACCOUNT_ID = 'acct_platform_marquee';

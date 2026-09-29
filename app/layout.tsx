@@ -3,6 +3,7 @@ import { Red_Hat_Display, Red_Hat_Text } from 'next/font/google';
 
 import { SimBanner } from '@/components/layout/sim-banner';
 import { SiteFooter, SiteHeader } from '@/components/layout/site-header';
+import { AGENT, PLATFORM } from '@/lib/brand';
 
 import { Providers } from './providers';
 import './globals.css';
@@ -23,11 +24,10 @@ const body = Red_Hat_Text({
 
 export const metadata: Metadata = {
   title: {
-    default: 'StageGate Ask — simulated agent demo',
-    template: '%s · StageGate Ask',
+    default: `${PLATFORM} — ${AGENT}, a simulated agent demo`,
+    template: `%s · ${PLATFORM}`,
   },
-  description:
-    'A fully simulated demo of an internal "ask an agent" experience for a fictional live-events ticketing platform running on Stripe Connect. No live Stripe connection.',
+  description: `A fully simulated demo of ${AGENT}, the AI agent inside ${PLATFORM} — a fictional live-events ticketing platform running on Stripe Connect. Two lenses: the platform's own operations, and an agent the platform resells to its event organizers. No live Stripe connection.`,
   robots: { index: false, follow: false },
 };
 

@@ -15,7 +15,7 @@ const config: Config = {
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       colors: {
-        // StageGate brand: black + white, brilliant blue accent,
+        // Marquee brand: black + white, brilliant blue accent,
         // purple and cool gray used sparingly.
         ink: {
           DEFAULT: '#000000',

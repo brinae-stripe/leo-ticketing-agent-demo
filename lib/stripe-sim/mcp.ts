@@ -31,7 +31,7 @@ export interface CreateRefundParams {
   charge: string;
   amount?: number;
   reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer';
-  /** On a destination charge, pull the funds back out of the host's balance. */
+  /** On a destination charge, pull the funds back out of the organizer's balance. */
   reverse_transfer?: boolean;
   refund_application_fee?: boolean;
   metadata?: Record<string, string>;

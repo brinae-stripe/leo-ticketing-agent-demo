@@ -39,17 +39,17 @@ export const moneyFromSaturday: Scenario = {
 
   async run(ctx): Promise<ScenarioResult> {
     const accountId = ctx.accountId!;
-    const host = ctx.index.accountById.get(accountId)!;
+    const organizer = ctx.index.accountById.get(accountId)!;
 
-    // "Saturday" means the host's most recent trading Saturday. Most hosts do
+    // "Saturday" means the organizer's most recent trading Saturday. Most organizers do
     // not sell every weekend — a ballet company plays Thursdays — so anchoring
     // on the calendar Saturday would answer a question nobody asked.
-    const hostCharges = ctx.index.paidChargesByAccount.get(accountId) ?? [];
+    const organizerCharges = ctx.index.paidChargesByAccount.get(accountId) ?? [];
     let start = saturdayBefore(T.now, 0);
     let weeksBack = 0;
     for (; weeksBack < 13; weeksBack += 1) {
       const candidate = saturdayBefore(T.now, weeksBack);
-      const traded = hostCharges.some(
+      const traded = organizerCharges.some(
         (charge) => charge.created >= candidate && charge.created < candidate + DAY,
       );
       if (traded) {
@@ -139,7 +139,7 @@ WHERE c.account_id = '${accountId}'
     const answer =
       charges === 0
         ? [
-            `Nothing was sold on Saturday ${longDate(start)} for ${host.business_profile_name}, so there is no money from that day to trace. Your balance today is ${money(available)} available and ${money(pending)} still settling.`,
+            `Nothing was sold on Saturday ${longDate(start)} for ${organizer.business_profile_name}, so there is no money from that day to trace. Your balance today is ${money(available)} available and ${money(pending)} still settling.`,
           ]
         : [
             isMostRecentSaturday
@@ -162,7 +162,7 @@ WHERE c.account_id = '${accountId}'
         callLabel: 'POST /v1/reporting/report_runs',
         method: 'POST',
         path: '/v1/reporting/report_runs',
-        plainEnglish: `Generates an itemized payout reconciliation report for ${host.business_profile_name} covering Saturday through today. One row per transaction, with the fee and the payout it settled into — the file your bookkeeper wants.`,
+        plainEnglish: `Generates an itemized payout reconciliation report for ${organizer.business_profile_name} covering Saturday through today. One row per transaction, with the fee and the payout it settled into — the file your bookkeeper wants.`,
         params: {
           report_type: 'connected_account_payout_reconciliation.itemized.5',
           parameters: {
@@ -229,7 +229,7 @@ WHERE c.account_id = '${accountId}'
           amount: instantAmount,
           currency: 'usd',
           method: 'instant',
-          statement_descriptor: 'STAGEGATE PAYOUT',
+          statement_descriptor: 'MARQUEE PAYOUT',
         },
         totals: [
           { label: 'Payout amount', value: money(instantAmount) },
@@ -246,7 +246,7 @@ WHERE c.account_id = '${accountId}'
               amount: instantAmount,
               currency: 'usd',
               method: 'instant',
-              statement_descriptor: 'STAGEGATE PAYOUT',
+              statement_descriptor: 'MARQUEE PAYOUT',
             },
             { idempotencyKey: options.idempotencyKey },
           ),

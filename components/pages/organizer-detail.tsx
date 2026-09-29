@@ -22,20 +22,20 @@ import { ORGANIZER_SCENARIOS } from '@/lib/scenarios';
 import { CATEGORY_PROFILES } from '@/lib/sim/catalog';
 import { NOW } from '@/lib/sim/constants';
 import { dateTime, humanize, isoToShortDate, longDate, money, percent, untilLabel } from '@/lib/sim/format';
-import { hostSummary } from '@/lib/sim/metrics';
+import { organizerSummary } from '@/lib/sim/metrics';
 import { useSim } from '@/lib/store/sim-store';
 import { cn } from '@/lib/utils';
 
-export function HostDetail({ accountId }: { accountId: string }) {
+export function OrganizerDetail({ accountId }: { accountId: string }) {
   return (
     <SimGate
       fallback={
         <div className="mx-auto max-w-[84rem] px-4 py-10 sm:px-6">
-          <p className="text-[13px] text-gray-500">Loading host…</p>
+          <p className="text-[13px] text-gray-500">Loading organizer…</p>
         </div>
       }
     >
-      <HostDetailBody accountId={accountId} />
+      <OrganizerDetailBody accountId={accountId} />
     </SimGate>
   );
 }
@@ -49,14 +49,14 @@ const TABS = [
   { id: 'copilot', label: 'Organizer copilot' },
 ];
 
-function HostDetailBody({ accountId }: { accountId: string }) {
+function OrganizerDetailBody({ accountId }: { accountId: string }) {
   const { data, index } = useSim();
   const [tab, setTab] = React.useState('overview');
 
   const account = index.accountById.get(accountId);
 
   const summary = React.useMemo(
-    () => (account ? hostSummary(data, index, accountId) : null),
+    () => (account ? organizerSummary(data, index, accountId) : null),
     [account, accountId, data, index],
   );
 
@@ -64,19 +64,19 @@ function HostDetailBody({ accountId }: { accountId: string }) {
     return (
       <div className="mx-auto max-w-[84rem] px-4 py-10 sm:px-6">
         <EmptyState
-          title="No such host"
-          description="That account id is not in the seeded dataset. It may have been from an older demo session — reset the demo data or pick a host from the list."
+          title="No such organizer"
+          description="That account id is not in the seeded dataset. It may have been from an older demo session — reset the demo data or pick a organizer from the list."
         />
         <div className="mt-4">
-          <Link href="/hosts" className="text-[13px] font-medium text-blue-600 hover:underline">
-            Back to all hosts
+          <Link href="/organizers" className="text-[13px] font-medium text-blue-600 hover:underline">
+            Back to all organizers
           </Link>
         </div>
       </div>
     );
   }
 
-  const profile = CATEGORY_PROFILES[account.metadata.host_category];
+  const profile = CATEGORY_PROFILES[account.metadata.organizer_category];
   const events = (index.eventsByAccount.get(accountId) ?? [])
     .slice()
     .sort((a, b) => b.starts_at - a.starts_at);
@@ -96,11 +96,11 @@ function HostDetailBody({ accountId }: { accountId: string }) {
         <StadiumLights />
         <div className="relative mx-auto max-w-[84rem] px-4 py-8 sm:px-6">
           <Link
-            href="/hosts"
+            href="/organizers"
             className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-white/60 transition-colors hover:text-white"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            All hosts
+            All organizers
           </Link>
           <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-0">
@@ -183,7 +183,7 @@ function HostDetailBody({ accountId }: { accountId: string }) {
                   <div>
                     <CardTitle>Commercials</CardTitle>
                     <CardDescription>
-                      How StageGate is paid by this host.
+                      How Marquee is paid by this organizer.
                     </CardDescription>
                   </div>
                 </CardHeader>
@@ -360,7 +360,7 @@ function HostDetailBody({ accountId }: { accountId: string }) {
                   <div>
                     <CardTitle>Conversion by cohort</CardTitle>
                     <CardDescription>
-                      Where this host loses authorisations.
+                      Where this organizer loses authorisations.
                     </CardDescription>
                   </div>
                 </CardHeader>
@@ -434,7 +434,7 @@ function HostDetailBody({ accountId }: { accountId: string }) {
                 <CardBody>
                   <EmptyState
                     title="No disputes"
-                    description="Nothing has been charged back against this host in the data window."
+                    description="Nothing has been charged back against this organizer in the data window."
                   />
                 </CardBody>
               ) : (
@@ -467,7 +467,7 @@ function HostDetailBody({ accountId }: { accountId: string }) {
                 <CardBody>
                   <EmptyState
                     title="No readers registered"
-                    description="This host sells online only — there is no Terminal hardware on the account."
+                    description="This organizer sells online only — there is no Terminal hardware on the account."
                   />
                 </CardBody>
               ) : (
@@ -508,7 +508,7 @@ function HostDetailBody({ accountId }: { accountId: string }) {
                   <p className="text-[12.5px] leading-relaxed text-gray-700">
                     This is what {account.business_profile_name} sees when they open the
                     copilot in their own dashboard. Everything is scoped to this connected
-                    account — the organizer cannot query other hosts, and the actions run in
+                    account — the organizer cannot query other organizers, and the actions run in
                     their account context.
                   </p>
                 </div>

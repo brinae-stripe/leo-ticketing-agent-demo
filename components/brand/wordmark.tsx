@@ -1,13 +1,14 @@
+import { PLATFORM } from '@/lib/brand';
 import { cn } from '@/lib/utils';
 
 /**
- * StageGate wordmark. Monochrome, always — it inherits currentColor so it works
- * on the dark header band and on white without a second asset. The leading S is
- * slanted; nothing else is.
+ * Platform wordmark. Monochrome, always — it inherits currentColor so it works
+ * on the dark header band and on white without a second asset. The leading
+ * letter is slanted; nothing else is.
  */
 export function Wordmark({
   className,
-  label = 'STAGEGATE',
+  label = PLATFORM.toUpperCase(),
 }: {
   className?: string;
   label?: string;

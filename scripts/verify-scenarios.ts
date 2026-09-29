@@ -78,8 +78,8 @@ async function runAction(action: ActionSpec, label: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  // Organizer scenarios need an account in scope. Use a hero host with volume.
-  const organizerHost = index.accountByName.get('Nebula Fan Expo')!;
+  // Organizer scenarios need an account in scope. Use a hero organizer with volume.
+  const organizerOrganizer = index.accountByName.get('Nebula Fan Expo')!;
 
   for (const scenario of ALL_SCENARIOS) {
     if (ONLY && !ONLY.startsWith('--') && scenario.id !== ONLY) continue;
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
     }
 
     const ctx = scenarioContext(
-      scenario.scope === 'organizer' ? organizerHost.id : undefined,
+      scenario.scope === 'organizer' ? organizerOrganizer.id : undefined,
       scenario.suggestedPrompt,
     );
 

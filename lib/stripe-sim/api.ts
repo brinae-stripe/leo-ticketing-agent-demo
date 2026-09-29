@@ -22,7 +22,7 @@ import type { SimContext } from './types';
  * Each function is named after its endpoint and takes the same parameters the
  * real API takes. Where a call has to run in a connected account's context, the
  * `Stripe-Account` header is set explicitly and shown in the preview, because
- * getting that wrong is the difference between debiting a host and debiting
+ * getting that wrong is the difference between debiting a organizer and debiting
  * yourself.
  */
 
@@ -147,8 +147,8 @@ export interface CreateTransferParams {
 /**
  * Account debit.
  *
- * Called with `Stripe-Account: <host>` and `destination: <platform>`, which
- * moves money out of the connected account and into StageGate — the opposite
+ * Called with `Stripe-Account: <organizer>` and `destination: <platform>`, which
+ * moves money out of the connected account and into Marquee — the opposite
  * direction from every other transfer in the dataset.
  */
 export async function createTransfer(
@@ -209,7 +209,7 @@ export async function createTransfer(
           patch: { available: platform.available + params.amount },
         });
       }
-      // Mark the host's outstanding service fees as settled.
+      // Mark the organizer's outstanding service fees as settled.
       ctx.record({
         kind: 'patch_many',
         table: 'service_fee_ledger',

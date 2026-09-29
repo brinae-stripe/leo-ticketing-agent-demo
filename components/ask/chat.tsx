@@ -7,7 +7,9 @@ import { ScenarioView } from '@/components/ask/scenario-view';
 import { Wordmark } from '@/components/brand/wordmark';
 import { Button } from '@/components/ui/button';
 import { Badge, Card, CardBody } from '@/components/ui/primitives';
+import { AGENT } from '@/lib/brand';
 import { capabilityList, matchScenario, type ScenarioMatch } from '@/lib/scenarios';
+import { TOTAL_ACCOUNTS } from '@/lib/sim/constants';
 import type { ScenarioResult } from '@/lib/scenarios/types';
 import { runSql } from '@/lib/sql/engine';
 import { useSimStore } from '@/lib/store/sim-store';
@@ -199,8 +201,8 @@ export function AskChat({
             rows={1}
             placeholder={
               scope === 'organizer'
-                ? 'Ask about your payouts, buyers or checkout…'
-                : 'Ask about disputes, fees, payouts, readers…'
+                ? `Ask ${AGENT} about your payouts, buyers or checkout…`
+                : `Ask ${AGENT} about disputes, fees, payouts, readers…`
             }
             className="scroll-thin max-h-32 min-h-[2.5rem] flex-1 resize-none bg-transparent px-2.5 py-2 text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none"
           />
@@ -215,8 +217,8 @@ export function AskChat({
           </Button>
         </div>
         <p className="mt-2 px-1 text-[11.5px] text-gray-500">
-          The agent is scripted, not a language model — it matches your question against a
-          catalogue of {scenarios.length} scenarios and runs their SQL.
+          {AGENT} is scripted in this demo, not a language model — it matches your question
+          against a catalogue of {scenarios.length} scenarios and runs their SQL.
         </p>
       </form>
     </div>
@@ -304,15 +306,15 @@ function EmptyChat({
           <p className="text-[14.5px] leading-relaxed text-gray-800">
             {scope === 'organizer' ? (
               <>
-                Ask me about this account&apos;s money, buyers or checkout. I read the same
-                Stripe data <Wordmark className="text-[13px]" /> does, scoped to this host
-                only.
+                I&apos;m {AGENT}. Ask me about this account&apos;s money, buyers or checkout. I
+                read the same Stripe data <Wordmark className="text-[13px]" /> does, scoped to
+                this organizer only — I cannot see another organizer&apos;s rows.
               </>
             ) : (
               <>
-                Ask me anything about payments across the platform. I query the Data
-                Pipeline tables, show you the SQL I ran, and propose actions you approve
-                before they execute.
+                I&apos;m {AGENT}. Ask me anything about payments across all{' '}
+                {TOTAL_ACCOUNTS} organizers. I query the Data Pipeline tables, show you the
+                SQL I ran, and propose actions you approve before they execute.
               </>
             )}
           </p>

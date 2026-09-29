@@ -13,7 +13,7 @@ import type { Scenario, ScenarioResult } from '../types';
  * points of processing cost on Affirm or Klarna does to the margin.
  *
  * Enabling it is not the organizer's call alone — pay-over-time changes what
- * StageGate is underwriting — so this files a request and says so.
+ * Marquee is underwriting — so this files a request and says so.
  */
 export const vipPayOverTime: Scenario = {
   id: 'organizer_vip_bnpl',
@@ -34,7 +34,7 @@ export const vipPayOverTime: Scenario = {
 
   async run(ctx): Promise<ScenarioResult> {
     const accountId = ctx.accountId!;
-    const host = ctx.index.accountById.get(accountId)!;
+    const organizer = ctx.index.accountById.get(accountId)!;
     const config = ctx.index.pmcByAccount.get(accountId);
 
     const bucketCase = `CASE
@@ -46,7 +46,7 @@ export const vipPayOverTime: Scenario = {
   END`;
 
     const bucketSql = sql`
--- Conversion by order value for this host. If the top band converts materially
+-- Conversion by order value for this organizer. If the top band converts materially
 -- worse than the rest, price is doing something to the checkout.
 SELECT
   ${bucketCase} AS order_band,
@@ -75,7 +75,7 @@ GROUP BY c.outcome_reason
 ORDER BY declines DESC`;
 
     const tierSql = sql`
--- The host's own tiers, so the recommendation names the right one.
+-- The organizer's own tiers, so the recommendation names the right one.
 SELECT
   c.metadata_tier AS tier,
   COUNT(*) AS attempts,
@@ -97,7 +97,7 @@ SELECT
   SUM(CASE WHEN c.paid = true THEN 1 ELSE 0 END) AS succeeded,
   ROUND(SUM(CASE WHEN c.paid = true THEN 1 ELSE 0 END) / COUNT(*), 4) AS conversion,
   ROUND(AVG(c.amount), 0) AS avg_order_value,
-  COUNT(DISTINCT c.account_id) AS hosts_using
+  COUNT(DISTINCT c.account_id) AS organizers_using
 FROM charges c
 WHERE c.payment_method_details_type IN ('klarna', 'affirm', 'afterpay_clearpay')
 GROUP BY c.payment_method_details_type
@@ -148,8 +148,8 @@ ORDER BY attempts DESC`;
         : `There are no declines on orders over ${money(20_000)} for you at all, which weakens the case considerably — there is no visible affordability problem to solve.`,
       `The cost side: Affirm and Klarna run around 5.99% + $0.30 against 2.9% + $0.30 for cards. Moving your ${str(premiumTier, 'tier')} volume onto pay-over-time would cost roughly ${money(extraCost)} more in processing per quarter. Recovering those ${nsfCount} affordability declines at your ${money(premiumAov)} average order would be worth about ${money(recoverable)}.`,
       platform.rows.length > 0
-        ? `For context, ${platform.rows.reduce((s, r) => s + num(r, 'hosts_using'), 0)} hosts on StageGate take pay-over-time today, at an average order of ${money(Math.round(platform.rows.reduce((s, r) => s + num(r, 'avg_order_value') * num(r, 'attempts'), 0) / Math.max(1, platform.rows.reduce((s, r) => s + num(r, 'attempts'), 0))))} and ${percent(platform.rows.reduce((s, r) => s + num(r, 'succeeded'), 0) / Math.max(1, platform.rows.reduce((s, r) => s + num(r, 'attempts'), 0)), 1)} conversion. It is a premium-tier tool, not a general one.`
-        : 'No hosts on StageGate currently take pay-over-time, so there is no internal benchmark to compare against.',
+        ? `For context, ${platform.rows.reduce((s, r) => s + num(r, 'organizers_using'), 0)} organizers on Marquee take pay-over-time today, at an average order of ${money(Math.round(platform.rows.reduce((s, r) => s + num(r, 'avg_order_value') * num(r, 'attempts'), 0) / Math.max(1, platform.rows.reduce((s, r) => s + num(r, 'attempts'), 0))))} and ${percent(platform.rows.reduce((s, r) => s + num(r, 'succeeded'), 0) / Math.max(1, platform.rows.reduce((s, r) => s + num(r, 'attempts'), 0)), 1)} conversion. It is a premium-tier tool, not a general one.`
+        : 'No organizers on Marquee currently take pay-over-time, so there is no internal benchmark to compare against.',
       worthIt
         ? `On these numbers it is worth trying — ${money(recoverable)} of recoverable demand against ${money(extraCost)} of extra cost. Worth scoping it to the top tier only, so the higher rate does not apply to your ${money(num(lowBands[0], 'avg_order_value'))} tickets.`
         : `On these numbers it does not pay for itself yet: ${money(recoverable)} of recoverable demand against ${money(extraCost)} of extra processing cost. Worth revisiting if the top tier grows or if you add a higher-priced package.`,
@@ -178,11 +178,11 @@ ORDER BY attempts DESC`;
       },
       resolution: {
         headline: worthIt
-          ? `Yes — for the ${str(premiumTier, 'tier')} tier only. Request it from StageGate.`
+          ? `Yes — for the ${str(premiumTier, 'tier')} tier only. Request it from Marquee.`
           : `Not yet on these numbers, but here is the request if you want to try it anyway.`,
         body: affirmOn
           ? `Pay-over-time is already switched on for your account, so there is nothing to request — check that your checkout is surfacing it on the top tier.`
-          : `Turning on a pay-over-time method is a joint decision: it changes what StageGate underwrites and it changes your effective rate. The copilot files a request for their payments team with the numbers attached, so the conversation starts from evidence rather than a hunch.`,
+          : `Turning on a pay-over-time method is a joint decision: it changes what Marquee underwrites and it changes your effective rate. The copilot files a request for their payments team with the numbers attached, so the conversation starts from evidence rather than a hunch.`,
         bullets: [
           `${str(premiumTier, 'tier')}: ${money(premiumAov)} average, ${percent(topConv, 1)} conversion`,
           `${nsfCount} insufficient-funds declines above ${money(20_000)}`,
@@ -200,7 +200,7 @@ ORDER BY attempts DESC`;
               method: 'POST',
               path: `/v1/payment_method_configurations/${config.id}`,
               stripeAccount: accountId,
-              plainEnglish: `Two things happen. First, a request is filed for StageGate's payments team with the numbers above attached — that is the approval step, and in production it waits for a human. Second, because this demo lets you stand in for the platform, the configuration change is applied immediately so you can see the result. In a real deployment those are days apart.`,
+              plainEnglish: `Two things happen. First, a request is filed for Marquee's payments team with the numbers above attached — that is the approval step, and in production it waits for a human. Second, because this demo lets you stand in for the platform, the configuration change is applied immediately so you can see the result. In a real deployment those are days apart.`,
               params: {
                 request: {
                   account: accountId,
@@ -221,7 +221,7 @@ ORDER BY attempts DESC`;
               ],
               variant: worthIt ? 'primary' : 'secondary',
               run: async (simCtx, options) => {
-                // The approval item StageGate's team would action.
+                // The approval item Marquee's team would action.
                 simCtx.record({
                   kind: 'insert',
                   table: 'platform_requests',

@@ -4,11 +4,11 @@ import { list, money, num, percent, plural, pts, sql, str } from '../helpers';
 import type { Scenario, ScenarioItem, ScenarioResult } from '../types';
 
 /**
- * "Which hosts' buyers would benefit from Apple Pay or pay-over-time?"
+ * "Which organizers' buyers would benefit from Apple Pay or pay-over-time?"
  *
- * Two separate arguments, and they apply to different hosts. Wallets are a
+ * Two separate arguments, and they apply to different organizers. Wallets are a
  * friction argument: a buyer who has to type a card number converts worse, and
- * hosts with wallets switched off on their child configuration are the ones
+ * organizers with wallets switched off on their child configuration are the ones
  * leaving that on the table. Pay-over-time is an affordability argument: it only
  * makes sense where order values are high and we can see buyers being declined
  * for insufficient funds.
@@ -21,12 +21,12 @@ export const checkoutOptimizer: Scenario = {
   id: 'checkout_optimizer',
   scope: 'internal',
   title: 'Checkout method opportunities',
-  suggestedPrompt: "Which hosts' buyers would benefit from Apple Pay or pay-over-time?",
+  suggestedPrompt: "Which organizers' buyers would benefit from Apple Pay or pay-over-time?",
   blurb:
-    'Ranks hosts by the conversion they are losing to manual card entry, and separately by how much their order values justify pay-over-time.',
+    'Ranks organizers by the conversion they are losing to manual card entry, and separately by how much their order values justify pay-over-time.',
   triggers: [
-    "which hosts' buyers would benefit from apple pay or pay-over-time",
-    'which hosts would benefit from apple pay',
+    "which organizers' buyers would benefit from apple pay or pay-over-time",
+    'which organizers would benefit from apple pay',
     'checkout optimization',
     'wallets',
     'apple pay',
@@ -48,7 +48,7 @@ export const checkoutOptimizer: Scenario = {
 
     const methodSql = sql`
 -- Platform-wide conversion by how the buyer paid. This is the benchmark every
--- per-host recommendation below is measured against.
+-- per-organizer recommendation below is measured against.
 SELECT
   ${methodCase} AS method,
   COUNT(*) AS attempts,
@@ -59,13 +59,13 @@ FROM charges c
 GROUP BY ${methodCase}
 ORDER BY attempts DESC`;
 
-    const hostSql = sql`
--- Checkout profile per host. Hosts under 150 attempts are excluded — there is
+    const organizerSql = sql`
+-- Checkout profile per organizer. Organizers under 150 attempts are excluded — there is
 -- not enough there to recommend a change with a straight face.
 SELECT
   c.account_id,
-  a.business_profile_name AS host,
-  a.metadata_host_category AS category,
+  a.business_profile_name AS organizer,
+  a.metadata_organizer_category AS category,
   COUNT(*) AS attempts,
   SUM(CASE WHEN c.paid = true THEN 1 ELSE 0 END) AS succeeded,
   ROUND(SUM(CASE WHEN c.paid = true THEN 1 ELSE 0 END) / COUNT(*), 4) AS conversion,
@@ -80,17 +80,17 @@ SELECT
   SUM(c.amount) AS gross_volume
 FROM charges c
 JOIN accounts a ON a.id = c.account_id
-GROUP BY c.account_id, a.business_profile_name, a.metadata_host_category
+GROUP BY c.account_id, a.business_profile_name, a.metadata_organizer_category
 HAVING COUNT(*) >= 150
 ORDER BY gross_volume DESC`;
 
     const configSql = sql`
--- What each host's child payment method configuration actually has switched on.
--- A host can want Apple Pay and still not have it if onboarding left it off.
+-- What each organizer's child payment method configuration actually has switched on.
+-- A organizer can want Apple Pay and still not have it if onboarding left it off.
 SELECT
   p.id AS configuration_id,
   p.account_id,
-  a.business_profile_name AS host,
+  a.business_profile_name AS organizer,
   p.parent,
   p.apple_pay_preference,
   p.google_pay_preference,
@@ -102,9 +102,9 @@ FROM payment_method_configurations p
 JOIN accounts a ON a.id = p.account_id
 ORDER BY a.business_profile_name ASC`;
 
-    const [methods, hostRows, configs] = await Promise.all([
+    const [methods, organizerRows, configs] = await Promise.all([
       ctx.sql(methodSql),
-      ctx.sql(hostSql),
+      ctx.sql(organizerSql),
       ctx.sql(configSql),
     ]);
 
@@ -121,7 +121,7 @@ ORDER BY a.business_profile_name ASC`;
     const configByAccount = new Map(configs.rows.map((row) => [str(row, 'account_id'), row]));
 
     // Wallet candidates: wallets off in config, and a real manual-entry base.
-    const walletCandidates = hostRows.rows
+    const walletCandidates = organizerRows.rows
       .map((row) => {
         const config = configByAccount.get(str(row, 'account_id'));
         const walletsOff = str(config, 'apple_pay_preference') === 'off';
@@ -136,7 +136,7 @@ ORDER BY a.business_profile_name ASC`;
       .sort((a, b) => b.upside - a.upside);
 
     // Pay-over-time candidates: high order values plus visible affordability pain.
-    const bnplCandidates = hostRows.rows
+    const bnplCandidates = organizerRows.rows
       .map((row) => {
         const config = configByAccount.get(str(row, 'account_id'));
         const bnplOff = str(config, 'affirm_preference') === 'off';
@@ -149,20 +149,20 @@ ORDER BY a.business_profile_name ASC`;
       .sort((a, b) => b.aov - a.aov);
 
     const platformAov = Math.round(
-      hostRows.rows.reduce((s, r) => s + num(r, 'gross_volume'), 0) /
-        Math.max(1, hostRows.rows.reduce((s, r) => s + num(r, 'succeeded'), 0)),
+      organizerRows.rows.reduce((s, r) => s + num(r, 'gross_volume'), 0) /
+        Math.max(1, organizerRows.rows.reduce((s, r) => s + num(r, 'succeeded'), 0)),
     );
 
     const walletItems: ScenarioItem[] = walletCandidates.slice(0, 6).map((candidate) => {
       const accountId = str(candidate.row, 'account_id');
-      const host = str(candidate.row, 'host');
+      const organizer = str(candidate.row, 'organizer');
       const configId = str(candidate.config, 'configuration_id');
 
       return {
         id: `wallet_${accountId}`,
-        title: host,
+        title: organizer,
         subtitle: `${percent(candidate.manualShare, 0)} of attempts are typed card numbers · ${plural(candidate.upside, 'transaction')} recoverable`,
-        href: `/hosts/${accountId}`,
+        href: `/organizers/${accountId}`,
         facts: [
           {
             label: 'Manually entered',
@@ -194,13 +194,13 @@ ORDER BY a.business_profile_name ASC`;
             method: 'POST',
             path: `/v1/payment_method_configurations/${configId}`,
             stripeAccount: accountId,
-            plainEnglish: `Switches Apple Pay and Google Pay on in ${host}'s child payment method configuration. Buyers on a supported device will see the wallet button at the top of checkout from the next page load. Nothing changes for buyers who already use a card.`,
+            plainEnglish: `Switches Apple Pay and Google Pay on in ${organizer}'s child payment method configuration. Buyers on a supported device will see the wallet button at the top of checkout from the next page load. Nothing changes for buyers who already use a card.`,
             params: {
               'apple_pay[display_preference][preference]': 'on',
               'google_pay[display_preference][preference]': 'on',
             },
             totals: [
-              { label: 'Host', value: host },
+              { label: 'Organizer', value: organizer },
               { label: 'Configuration', value: configId },
               { label: 'Manual-entry attempts', value: candidate.manual.toLocaleString('en-US') },
               { label: 'Modelled upside', value: `${plural(candidate.upside, 'order')} / quarter` },
@@ -220,14 +220,14 @@ ORDER BY a.business_profile_name ASC`;
 
     const bnplItems: ScenarioItem[] = bnplCandidates.slice(0, 4).map((candidate) => {
       const accountId = str(candidate.row, 'account_id');
-      const host = str(candidate.row, 'host');
+      const organizer = str(candidate.row, 'organizer');
       const configId = str(candidate.config, 'configuration_id');
 
       return {
         id: `bnpl_${accountId}`,
-        title: host,
+        title: organizer,
         subtitle: `${money(candidate.aov)} average order · ${plural(candidate.nsf, 'insufficient-funds decline')}`,
-        href: `/hosts/${accountId}`,
+        href: `/organizers/${accountId}`,
         facts: [
           {
             label: 'Average order',
@@ -259,13 +259,13 @@ ORDER BY a.business_profile_name ASC`;
             method: 'POST',
             path: `/v1/payment_method_configurations/${configId}`,
             stripeAccount: accountId,
-            plainEnglish: `Switches Affirm and Klarna on for ${host}. Pay-over-time carries a higher processing rate — around 5.99% + $0.30 against 2.9% + $0.30 for cards — so it only pays for itself on orders this size. StageGate is paid in full at the time of sale either way.`,
+            plainEnglish: `Switches Affirm and Klarna on for ${organizer}. Pay-over-time carries a higher processing rate — around 5.99% + $0.30 against 2.9% + $0.30 for cards — so it only pays for itself on orders this size. Marquee is paid in full at the time of sale either way.`,
             params: {
               'affirm[display_preference][preference]': 'on',
               'klarna[display_preference][preference]': 'on',
             },
             totals: [
-              { label: 'Host', value: host },
+              { label: 'Organizer', value: organizer },
               { label: 'Average order', value: money(candidate.aov) },
               { label: 'Processing rate', value: '≈5.99% + $0.30 on those orders' },
               {
@@ -289,17 +289,17 @@ ORDER BY a.business_profile_name ASC`;
     const totalWalletUpside = walletCandidates.reduce((s, c) => s + c.upside, 0);
 
     const answer = [
-      `Two different arguments here, and they point at different hosts. Platform-wide, wallet payments convert at ${percent(walletConv, 1)} and Link at ${percent(linkConv, 1)}, against ${percent(manualConv, 1)} for a typed card number — a ${pts(walletLift)} gap on identical traffic.`,
-      `${plural(walletCandidates.length, 'host')} have Apple Pay and Google Pay switched off on their child configuration while still taking real volume through manual card entry. The biggest is ${str(walletCandidates[0]?.row, 'host')}, where ${num(walletCandidates[0]?.row, 'manual_card_attempts').toLocaleString('en-US')} attempts were typed card numbers. Across all ${walletCandidates.length}, closing that gap is worth roughly ${plural(totalWalletUpside, 'additional successful order')} per quarter on the traffic they already have.`,
-      `Pay-over-time is a narrower case. ${plural(bnplCandidates.length, 'host')} clear the bar: average order above ${money(18_000)} and visible insufficient-funds declines. ${bnplCandidates.length > 0 ? `${list(bnplCandidates.slice(0, 3).map((c) => `${str(c.row, 'host')} at ${money(c.aov)}`))}.` : ''} Everywhere else the 5.99% rate is not worth it — platform pay-over-time is only ${percent(num(bnplRow, 'attempts') / Math.max(1, hostRows.rows.reduce((s, r) => s + num(r, 'attempts'), 0)), 2)} of attempts today, and that is about right.`,
+      `Two different arguments here, and they point at different organizers. Platform-wide, wallet payments convert at ${percent(walletConv, 1)} and Link at ${percent(linkConv, 1)}, against ${percent(manualConv, 1)} for a typed card number — a ${pts(walletLift)} gap on identical traffic.`,
+      `${plural(walletCandidates.length, 'organizer')} have Apple Pay and Google Pay switched off on their child configuration while still taking real volume through manual card entry. The biggest is ${str(walletCandidates[0]?.row, 'organizer')}, where ${num(walletCandidates[0]?.row, 'manual_card_attempts').toLocaleString('en-US')} attempts were typed card numbers. Across all ${walletCandidates.length}, closing that gap is worth roughly ${plural(totalWalletUpside, 'additional successful order')} per quarter on the traffic they already have.`,
+      `Pay-over-time is a narrower case. ${plural(bnplCandidates.length, 'organizer')} clear the bar: average order above ${money(18_000)} and visible insufficient-funds declines. ${bnplCandidates.length > 0 ? `${list(bnplCandidates.slice(0, 3).map((c) => `${str(c.row, 'organizer')} at ${money(c.aov)}`))}.` : ''} Everywhere else the 5.99% rate is not worth it — platform pay-over-time is only ${percent(num(bnplRow, 'attempts') / Math.max(1, organizerRows.rows.reduce((s, r) => s + num(r, 'attempts'), 0)), 2)} of attempts today, and that is about right.`,
     ];
 
     return {
       answer,
       queries: [
         { label: 'Conversion by payment method', note: 'The platform benchmark.', sql: methodSql, result: methods },
-        { label: 'Checkout profile per host', note: 'Hosts with at least 150 attempts.', sql: hostSql, result: hostRows },
-        { label: 'What each host has switched on', sql: configSql, result: configs },
+        { label: 'Checkout profile per organizer', note: 'Organizers with at least 150 attempts.', sql: organizerSql, result: organizerRows },
+        { label: 'What each organizer has switched on', sql: configSql, result: configs },
       ],
       table: {
         caption: 'Conversion by method, platform-wide',
@@ -314,12 +314,12 @@ ORDER BY a.business_profile_name ASC`;
       },
       items: [...walletItems, ...bnplItems],
       resolution: {
-        headline: `Turn wallets on for ${walletCandidates.length} hosts. Offer pay-over-time to ${bnplCandidates.length}.`,
-        body: `Wallets are close to free — no rate change, no buyer-facing risk, and the conversion gap is measured on our own traffic. Pay-over-time costs roughly 3 points more per transaction, so it should stay limited to the hosts whose order values justify it rather than being switched on platform-wide.`,
+        headline: `Turn wallets on for ${walletCandidates.length} organizers. Offer pay-over-time to ${bnplCandidates.length}.`,
+        body: `Wallets are close to free — no rate change, no buyer-facing risk, and the conversion gap is measured on our own traffic. Pay-over-time costs roughly 3 points more per transaction, so it should stay limited to the organizers whose order values justify it rather than being switched on platform-wide.`,
         bullets: [
           `${pts(walletLift)} conversion gap between wallet and typed-card checkout`,
           `${plural(totalWalletUpside, 'order')} per quarter recoverable across the wallet candidates`,
-          'Each change is scoped to that host\'s child configuration, not the platform default',
+          'Each change is scoped to that organizer\'s child configuration, not the platform default',
           'Network tokens and Account Updater would help the same cohort but cannot be enabled through the API',
         ],
       },
@@ -327,11 +327,11 @@ ORDER BY a.business_profile_name ASC`;
       dashboardOnly: [
         dashboardOnly(
           'network_tokens',
-          `The hosts above take ${percent(hostRows.rows.reduce((s, r) => s + num(r, 'non_us_attempts'), 0) / Math.max(1, hostRows.rows.reduce((s, r) => s + num(r, 'attempts'), 0)), 1)} of their attempts on non-US cards, which is where network tokens lift authorisation most. There is no endpoint for this — it is enabled per account by Stripe.`,
+          `The organizers above take ${percent(organizerRows.rows.reduce((s, r) => s + num(r, 'non_us_attempts'), 0) / Math.max(1, organizerRows.rows.reduce((s, r) => s + num(r, 'attempts'), 0)), 1)} of their attempts on non-US cards, which is where network tokens lift authorisation most. There is no endpoint for this — it is enabled per account by Stripe.`,
         ),
         dashboardOnly(
           'card_account_updater',
-          `${hostRows.rows.reduce((s, r) => s + num(r, 'insufficient_funds_declines'), 0).toLocaleString('en-US')} insufficient-funds declines and the platform's 0.5% stale-credential decline rate both point the same way. Account Updater refreshes stored cards automatically, but it is a Dashboard setting.`,
+          `${organizerRows.rows.reduce((s, r) => s + num(r, 'insufficient_funds_declines'), 0).toLocaleString('en-US')} insufficient-funds declines and the platform's 0.5% stale-credential decline rate both point the same way. Account Updater refreshes stored cards automatically, but it is a Dashboard setting.`,
         ),
         dashboardOnly(
           'adaptive_acceptance',

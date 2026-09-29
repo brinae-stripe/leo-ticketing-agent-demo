@@ -11,7 +11,7 @@ const BATCH_SIZE = 200;
  * The interesting part is not the loop, it is what you check before running it.
  * There is no bulk refund endpoint, so this is create_refund a few thousand
  * times, and with reverse_transfer set it pulls each ticket's money back out of
- * the host's balance. If the host has already been paid out — and they have —
+ * the organizer's balance. If the organizer has already been paid out — and they have —
  * that drives them deeply negative, which is a conversation to have before the
  * first batch rather than after the last one.
  */
@@ -21,7 +21,7 @@ export const eventCancellation: Scenario = {
   title: 'Cancel an event and refund every buyer',
   suggestedPrompt: 'Riverlight Music Festival is cancelled — refund everyone',
   blurb:
-    'Scopes every refundable charge on a cancelled event, checks the host can absorb the reversal, and runs the refunds in batches.',
+    'Scopes every refundable charge on a cancelled event, checks the organizer can absorb the reversal, and runs the refunds in batches.',
   triggers: [
     'riverlight music festival is cancelled — refund everyone',
     'riverlight music festival is cancelled',
@@ -36,9 +36,9 @@ export const eventCancellation: Scenario = {
     // Riverlight has several dates on sale. The one being cancelled is the one
     // with money on it — picking by date would land on whichever show happens
     // to be soonest, which is not what "refund everyone" is about.
-    const host = ctx.index.accountByName.get('Riverlight Music Festival');
+    const organizer = ctx.index.accountByName.get('Riverlight Music Festival');
     const event = ctx.data.events
-      .filter((e) => e.account_id === host?.id && e.status === 'on_sale')
+      .filter((e) => e.account_id === organizer?.id && e.status === 'on_sale')
       .map((candidate) => ({
         candidate,
         refundable: (ctx.index.chargesByEvent.get(candidate.id) ?? []).filter(
@@ -47,7 +47,7 @@ export const eventCancellation: Scenario = {
       }))
       .sort((a, b) => b.refundable - a.refundable)[0]?.candidate;
 
-    if (!host || !event) {
+    if (!organizer || !event) {
       throw new Error('No on-sale Riverlight event found in the dataset');
     }
 
@@ -82,27 +82,27 @@ SELECT 'never_succeeded' AS bucket, COUNT(*) AS charges, SUM(amount) AS amount
 FROM charges WHERE metadata_event_id = '${event.id}' AND paid = false`;
 
     const balanceSql = sql`
--- Can the host absorb the reversal? Almost never, once they have been paid out.
+-- Can the organizer absorb the reversal? Almost never, once they have been paid out.
 SELECT
   b.account_id,
-  a.business_profile_name AS host,
+  a.business_profile_name AS organizer,
   a.payout_schedule_interval,
   b.available,
   b.pending,
   (SELECT available FROM platform_balances) AS platform_available
 FROM account_balances b
 JOIN accounts a ON a.id = b.account_id
-WHERE b.account_id = '${host.id}'`;
+WHERE b.account_id = '${organizer.id}'`;
 
     const payoutSql = sql`
--- How much has already left for the host's bank account. This is why the
+-- How much has already left for the organizer's bank account. This is why the
 -- balance cannot cover it.
 SELECT
   COUNT(*) AS payouts,
   SUM(amount) AS paid_out,
   MAX(arrival_date) AS latest_arrival
 FROM connected_account_payouts
-WHERE account_id = '${host.id}'
+WHERE account_id = '${organizer.id}'
   AND status IN ('paid', 'in_transit')`;
 
     const sampleSql = sql`
@@ -160,8 +160,8 @@ LIMIT 100`;
     const answer = [
       `${event.name} at ${event.venue}, ${event.city} was due to open ${longDate(event.starts_at)}. There are ${plural(refundableCount, 'refundable charge')} on it — ${money(refundableAmount)} across ${tickets.toLocaleString('en-US')} tickets and ${buyers.toLocaleString('en-US')} distinct buyers.`,
       `${plural(excludedTotal, 'charge')} are excluded: ${excluded.rows.map((row) => `${num(row, 'charges')} ${str(row, 'bucket').replace(/_/g, ' ')}`).join(', ')}. Disputed charges in particular should not be refunded — the dispute is already running and refunding on top of it pays the buyer twice.`,
-      `The balance will not cover it. ${str(balanceRow, 'host')} has ${money(available)} available and ${money(pending)} pending against ${money(refundableAmount)} of refunds, because ${money(paidOut)} has already gone out on their ${str(balanceRow, 'payout_schedule_interval')} payout schedule. With reverse_transfer set, this run leaves them roughly ${money(shortfall)} in the red.`,
-      `That is recoverable — Stripe will settle the negative balance against future sales, and Riverlight has other dates on sale — but it is a conversation to have before the first batch, not after the last. StageGate's own balance is ${money(platformAvailable)}, so absorbing it centrally is not an option at this size.`,
+      `The balance will not cover it. ${str(balanceRow, 'organizer')} has ${money(available)} available and ${money(pending)} pending against ${money(refundableAmount)} of refunds, because ${money(paidOut)} has already gone out on their ${str(balanceRow, 'payout_schedule_interval')} payout schedule. With reverse_transfer set, this run leaves them roughly ${money(shortfall)} in the red.`,
+      `That is recoverable — Stripe will settle the negative balance against future sales, and Riverlight has other dates on sale — but it is a conversation to have before the first batch, not after the last. Marquee's own balance is ${money(platformAvailable)}, so absorbing it centrally is not an option at this size.`,
     ];
 
     return {
@@ -169,31 +169,31 @@ LIMIT 100`;
       queries: [
         { label: 'Refundable scope', sql: totalsSql, result: totals },
         { label: 'What is excluded and why', sql: excludedSql, result: excluded },
-        { label: 'Host balance versus exposure', sql: balanceSql, result: balance },
-        { label: 'Already paid out to the host', sql: payoutSql, result: payouts },
+        { label: 'Organizer balance versus exposure', sql: balanceSql, result: balance },
+        { label: 'Already paid out to the organizer', sql: payoutSql, result: payouts },
         { label: 'Sample of charges in scope', note: 'Largest 100 of the full set.', sql: sampleSql, result: sample },
       ],
       resolution: {
         headline: `Refund ${refundableCount.toLocaleString('en-US')} charges in ${batches} batches of ${BATCH_SIZE}, with reverse_transfer on.`,
-        body: `reverse_transfer is the right call even though it drives the host negative: these are Riverlight's ticket sales and Riverlight's cancellation, so the money should come back out of Riverlight's balance rather than StageGate's. Flag the ${money(shortfall)} shortfall to the account manager before running it, and let them tell the promoter. The event is also marked cancelled in StageGate's catalogue as part of the run so it stops selling.`,
+        body: `reverse_transfer is the right call even though it drives the organizer negative: these are Riverlight's ticket sales and Riverlight's cancellation, so the money should come back out of Riverlight's balance rather than Marquee's. Flag the ${money(shortfall)} shortfall to the account manager before running it, and let them tell the promoter. The event is also marked cancelled in Marquee's catalogue as part of the run so it stops selling.`,
         bullets: [
           `${money(refundableAmount)} across ${tickets.toLocaleString('en-US')} tickets and ${buyers.toLocaleString('en-US')} buyers`,
           `${batches} batches — there is no bulk refund endpoint, so this is create_refund ${refundableCount.toLocaleString('en-US')} times`,
-          `Host lands at roughly ${money(available - refundableAmount)}; Stripe recovers it from future sales`,
+          `Organizer lands at roughly ${money(available - refundableAmount)}; Stripe recovers it from future sales`,
           `${percent(num(summary, 'in_person_sales') / Math.max(1, refundableCount), 1)} of these were box-office sales and refund back to the original card`,
         ],
       },
       actions: [
         {
           id: 'cancellation_check_balance',
-          label: 'Check host balance first',
+          label: 'Check organizer balance first',
           surface: 'mcp',
           callLabel: 'retrieve_balance',
           method: 'GET',
           path: '/v1/balance',
-          stripeAccount: host.id,
-          plainEnglish: `Reads ${host.business_profile_name}'s live balance before anything is refunded, so the shortfall number in the answer above can be confirmed against Stripe rather than the warehouse. Read-only.`,
-          params: { stripe_account: host.id },
+          stripeAccount: organizer.id,
+          plainEnglish: `Reads ${organizer.business_profile_name}'s live balance before anything is refunded, so the shortfall number in the answer above can be confirmed against Stripe rather than the warehouse. Read-only.`,
+          params: { stripe_account: organizer.id },
           totals: [
             { label: 'Warehouse says available', value: money(available) },
             { label: 'Refund exposure', value: money(refundableAmount), tone: 'danger' },
@@ -202,7 +202,7 @@ LIMIT 100`;
           run: (simCtx, options) =>
             mcp.retrieve_balance(
               simCtx,
-              { stripe_account: host.id },
+              { stripe_account: organizer.id },
               { idempotencyKey: options.idempotencyKey },
             ),
         },
@@ -213,7 +213,7 @@ LIMIT 100`;
           callLabel: 'create_refund',
           method: 'POST',
           path: '/v1/refunds',
-          plainEnglish: `Refunds every refundable charge on ${event.name} in full, with reverse_transfer set so the money comes back out of ${host.business_profile_name}'s balance. Runs in ${batches} batches of ${BATCH_SIZE}. Also marks the event cancelled in StageGate's own catalogue so it stops selling. This cannot be undone.`,
+          plainEnglish: `Refunds every refundable charge on ${event.name} in full, with reverse_transfer set so the money comes back out of ${organizer.business_profile_name}'s balance. Runs in ${batches} batches of ${BATCH_SIZE}. Also marks the event cancelled in Marquee's own catalogue so it stops selling. This cannot be undone.`,
           params: {
             event: event.id,
             charges: `${refundableCount} charges`,
@@ -227,14 +227,14 @@ LIMIT 100`;
             { label: 'Total refunded', value: money(refundableAmount), tone: 'danger' },
             { label: 'Buyers contacted by Stripe', value: buyers.toLocaleString('en-US') },
             {
-              label: 'Host balance after',
+              label: 'Organizer balance after',
               value: money(available - refundableAmount),
               tone: 'danger',
             },
             { label: 'Batches', value: `${batches} × ${BATCH_SIZE}` },
           ],
           requiresSecondAck: true,
-          secondAckLabel: `I understand this refunds ${money(refundableAmount)} and leaves ${host.business_profile_name} approximately ${money(available - refundableAmount)} negative`,
+          secondAckLabel: `I understand this refunds ${money(refundableAmount)} and leaves ${organizer.business_profile_name} approximately ${money(available - refundableAmount)} negative`,
           variant: 'danger',
           batch: { size: BATCH_SIZE, total: refundableCount, unitLabel: 'refund' },
           run: async (simCtx, options) => {

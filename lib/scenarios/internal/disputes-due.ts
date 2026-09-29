@@ -47,7 +47,7 @@ SELECT
   c.card_brand,
   c.card_country,
   a.id AS account_id,
-  a.business_profile_name AS host,
+  a.business_profile_name AS organizer,
   e.name AS event_name,
   e.venue,
   e.starts_at AS event_starts_at,
@@ -103,7 +103,7 @@ ORDER BY resolved DESC`;
         access_activity_log: hasScan
           ? `${str(row, 'gate')} — scanned ${dateTime(scannedAt)}`
           : 'No scan recorded',
-        customer_email_address: `${str(row, 'customer_id')}@buyers.stagegate.example`,
+        customer_email_address: `${str(row, 'customer_id')}@buyers.marquee.example`,
       };
 
       const actions: ScenarioItem['actions'] = hasScan
@@ -179,8 +179,8 @@ ORDER BY resolved DESC`;
       return {
         id: disputeId,
         title: `${money(amount)} · ${str(row, 'reason').replace(/_/g, ' ')}`,
-        subtitle: `${str(row, 'host')} — ${str(row, 'event_name')}`,
-        href: `/hosts/${accountId}`,
+        subtitle: `${str(row, 'organizer')} — ${str(row, 'event_name')}`,
+        href: `/organizers/${accountId}`,
         facts: [
           {
             label: 'Evidence due',
@@ -203,7 +203,7 @@ ORDER BY resolved DESC`;
     });
 
     const answer = [
-      `${plural(rows.length, 'dispute')} need a response inside 72 hours, worth ${money(total)} in total. The earliest deadline is ${dateTime(num(soonest, 'evidence_due_by'))} — ${within(num(soonest, 'evidence_due_by'))} — on a ${money(num(soonest, 'amount'))} ${str(soonest, 'reason').replace(/_/g, ' ')} dispute against ${str(soonest, 'host')}.`,
+      `${plural(rows.length, 'dispute')} need a response inside 72 hours, worth ${money(total)} in total. The earliest deadline is ${dateTime(num(soonest, 'evidence_due_by'))} — ${within(num(soonest, 'evidence_due_by'))} — on a ${money(num(soonest, 'amount'))} ${str(soonest, 'reason').replace(/_/g, ' ')} dispute against ${str(soonest, 'organizer')}.`,
       `${withScan.length} of them have a gate scan on file, which is the evidence that actually wins ticketing disputes: it shows the buyer turned up and used the admission. The remaining ${withoutScan.length} have no scan at all.`,
       withoutScan.length > 0
         ? `For those ${withoutScan.length}, worth ${money(withoutScan.reduce((s, r) => s + num(r, 'amount'), 0))}, there is nothing to submit. Our own history backs that up — see the win rate by reason code below.`

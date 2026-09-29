@@ -7,24 +7,29 @@ import * as React from 'react';
 import { AskChat } from '@/components/ask/chat';
 import { StadiumLights } from '@/components/brand/wordmark';
 import { SimGate } from '@/components/layout/sim-gate';
+import { AGENT, LENS, PLATFORM } from '@/lib/brand';
 import { Badge, Card, CardBody, CardHeader, CardTitle } from '@/components/ui/primitives';
 import { INTERNAL_SCENARIOS } from '@/lib/scenarios';
 import { SCALE_FACTOR, TOTAL_CHARGES } from '@/lib/sim/constants';
 import { SQL_TABLE_NAMES } from '@/lib/sql/engine';
 
-export function AskPage({ initialQuestion }: { initialQuestion?: string }) {
+export function LeoPage({ initialQuestion }: { initialQuestion?: string }) {
   return (
     <>
       <section className="relative overflow-hidden bg-ink text-white">
         <StadiumLights />
         <div className="relative mx-auto max-w-[84rem] px-4 py-8 sm:px-6 sm:py-10">
-          <h1 className="font-display text-[26px] font-black leading-tight sm:text-[32px]">
-            Ask StageGate
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+            {LENS.platform.label}
+          </p>
+          <h1 className="font-display mt-2 text-[26px] font-black leading-tight sm:text-[32px]">
+            Ask {AGENT}
           </h1>
           <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-white/70">
-            Internal operations agent. It reads the simulated Data Pipeline tables, shows the
-            SQL it ran, proposes a resolution, and offers actions that need your approval
-            before anything executes.
+            {LENS.platform.persona} works in {PLATFORM} finance and operations, so she sees
+            every organizer on the platform. {AGENT} reads the simulated Data Pipeline tables,
+            shows the SQL it ran, proposes a resolution, and offers actions that need her
+            approval before anything executes.
           </p>
         </div>
       </section>
@@ -96,7 +101,7 @@ export function AskPage({ initialQuestion }: { initialQuestion?: string }) {
               {INTERNAL_SCENARIOS.map((scenario) => (
                 <Link
                   key={scenario.id}
-                  href={`/ask?q=${encodeURIComponent(scenario.suggestedPrompt)}`}
+                  href={`/leo?q=${encodeURIComponent(scenario.suggestedPrompt)}`}
                   className="block rounded-md px-2 py-1.5 text-[12.5px] leading-snug text-gray-700 transition-colors hover:bg-blue-50 hover:text-blue-700"
                 >
                   {scenario.title}

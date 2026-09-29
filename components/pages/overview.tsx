@@ -16,13 +16,14 @@ import { SimGate } from '@/components/layout/sim-gate';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody, CardDescription, CardHeader, CardTitle, Badge } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
-import { SCALE_FACTOR, TOTAL_CHARGES } from '@/lib/sim/constants';
+import { AGENT, LENS } from '@/lib/brand';
+import { SCALE_FACTOR, TOTAL_ACCOUNTS, TOTAL_CHARGES } from '@/lib/sim/constants';
 import { countCompact, humanize, moneyCompact, percent } from '@/lib/sim/format';
 import {
   overviewKpis,
   paymentMethodMix,
   platformTotals,
-  topHostsByVolume,
+  topOrganizersByVolume,
   weeklyTrend,
   type Kpi,
 } from '@/lib/sim/metrics';
@@ -51,23 +52,23 @@ function Hero() {
       <StadiumLights />
       <div className="relative mx-auto max-w-[84rem] px-4 py-14 sm:px-6 sm:py-20">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
-          Internal operations
+          <Wordmark className="text-[11px]" /> &nbsp;·&nbsp; {LENS.platform.label}
         </p>
         <h1 className="font-display mt-3 max-w-3xl text-[32px] font-black leading-[1.1] sm:text-[44px]">
-          Ask <Wordmark className="text-[32px] sm:text-[44px]" /> anything about
-          payments.
+          Ask {AGENT} anything about payments.
         </h1>
         <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-white/70">
           One question, answered from the Data Pipeline tables, with the SQL shown and a
           proposed resolution you can execute — after you approve it. Across{' '}
-          {countCompact(TOTAL_CHARGES * SCALE_FACTOR)} payment attempts and 70 event hosts.
+          {countCompact(TOTAL_CHARGES * SCALE_FACTOR)} payment attempts and{' '}
+          {TOTAL_ACCOUNTS} event organizers.
         </p>
 
         <form
           onSubmit={(event) => {
             event.preventDefault();
             const trimmed = question.trim();
-            router.push(trimmed ? `/ask?q=${encodeURIComponent(trimmed)}` : '/ask');
+            router.push(trimmed ? `/leo?q=${encodeURIComponent(trimmed)}` : '/leo');
           }}
           className="mt-8 max-w-2xl"
         >
@@ -77,7 +78,7 @@ function Hero() {
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               placeholder="What disputes are due in the next 72 hours?"
-              aria-label="Ask StageGate"
+              aria-label="Ask LEO"
               className="min-w-0 flex-1 bg-transparent px-1 py-2 text-[14.5px] text-white placeholder:text-white/40 focus:outline-none"
             />
             <Button type="submit" variant="inverse" className="shrink-0">
@@ -97,7 +98,7 @@ function OverviewBody() {
   const kpis = React.useMemo(() => overviewKpis(data), [data]);
   const trend = React.useMemo(() => weeklyTrend(data, index), [data, index]);
   const mix = React.useMemo(() => paymentMethodMix(data), [data]);
-  const hosts = React.useMemo(() => topHostsByVolume(data, index, 10), [data, index]);
+  const organizers = React.useMemo(() => topOrganizersByVolume(data, index, 10), [data, index]);
   const totals = React.useMemo(() => platformTotals(data), [data]);
 
   const latest = trend[trend.length - 1];
@@ -172,7 +173,7 @@ function OverviewBody() {
               <CardTitle>Cost and risk</CardTitle>
               <CardDescription>
                 Effective Stripe rate against disputes opened.{' '}
-                <Link href="/ask?q=Why+did+our+effective+fee+go+up+last+week%3F" className="font-medium text-blue-600 hover:underline">
+                <Link href="/leo?q=Why+did+our+effective+fee+go+up+last+week%3F" className="font-medium text-blue-600 hover:underline">
                   Ask why it moved
                 </Link>
               </CardDescription>
@@ -195,28 +196,28 @@ function OverviewBody() {
         <Card>
           <CardHeader>
             <div>
-              <CardTitle>Top hosts by volume</CardTitle>
+              <CardTitle>Top organizers by volume</CardTitle>
               <CardDescription>Net of refunds, trailing quarter.</CardDescription>
             </div>
             <Link
-              href="/hosts"
+              href="/organizers"
               className="shrink-0 text-[12.5px] font-medium text-blue-600 hover:underline"
             >
-              All 70 hosts
+              All 70 organizers
             </Link>
           </CardHeader>
           <DataTable
             columns={[
-              { key: 'name', label: 'Host' },
+              { key: 'name', label: 'Organizer' },
               { key: 'category', label: 'Category' },
               { key: 'volume', label: 'Net volume', align: 'right', kind: 'money' },
               { key: 'attempts', label: 'Attempts', align: 'right', kind: 'number' },
               { key: 'successRate', label: 'Success', align: 'right', kind: 'percent' },
               { key: 'disputes', label: 'Disputes', align: 'right', kind: 'number' },
             ]}
-            rows={hosts.map((host) => ({
-              ...host,
-              category: humanize(host.category),
+            rows={organizers.map((organizer) => ({
+              ...organizer,
+              category: humanize(organizer.category),
             }))}
             maxHeight="none"
           />
@@ -242,10 +243,10 @@ function OverviewBody() {
           />
           <CardBody className="border-t border-gray-200">
             <Link
-              href="/ask?q=Which+hosts%27+buyers+would+benefit+from+Apple+Pay+or+pay-over-time%3F"
+              href="/leo?q=Which+organizers%27+buyers+would+benefit+from+Apple+Pay+or+pay-over-time%3F"
               className="inline-flex items-center gap-1 text-[13px] font-medium text-blue-600 hover:underline"
             >
-              Which hosts should turn wallets on?
+              Which organizers should turn wallets on?
               <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
           </CardBody>
@@ -302,7 +303,7 @@ function KpiTile({ kpi }: { kpi: Kpi }) {
 
   return (
     <Card className="transition-colors hover:border-blue-400 hover:bg-blue-50/30">
-      <Link href={`/ask?q=${encodeURIComponent(kpi.ask)}`} className="block px-5 py-4">
+      <Link href={`/leo?q=${encodeURIComponent(kpi.ask)}`} className="block px-5 py-4">
         {body}
       </Link>
     </Card>

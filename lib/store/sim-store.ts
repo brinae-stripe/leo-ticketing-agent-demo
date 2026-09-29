@@ -15,7 +15,7 @@ import type { SimDataset, TableName } from '../sim/types';
 import { resetIds } from '../stripe-sim/ids';
 import type { AuditEntry, SimContext } from '../stripe-sim/types';
 
-const STORAGE_KEY = 'stagegate-ask-demo/v1';
+const STORAGE_KEY = 'marquee-ask-demo/v1';
 
 /**
  * Only inserts can invalidate an index — a patch mutates the row object that

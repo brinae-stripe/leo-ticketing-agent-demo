@@ -4,7 +4,7 @@ import { shortDate } from '../../sim/format';
 import { T, list, money, num, plural, sql, str } from '../helpers';
 import type { Scenario, ScenarioResult } from '../types';
 
-const BLOCKLIST = 'rsl_stagegate_blocked_fingerprints';
+const BLOCKLIST = 'rsl_marquee_blocked_fingerprints';
 
 /**
  * "Which early fraud warnings are still refundable?"
@@ -51,7 +51,7 @@ SELECT
   c.outcome_risk_score,
   c.transfer_id,
   a.id AS account_id,
-  a.business_profile_name AS host,
+  a.business_profile_name AS organizer,
   e.name AS event_name,
   e.starts_at AS event_starts_at
 FROM early_fraud_warnings w
@@ -71,7 +71,7 @@ ORDER BY w.created ASC`;
 SELECT
   c.card_fingerprint,
   COUNT(*) AS charges_on_card,
-  COUNT(DISTINCT c.account_id) AS hosts_hit,
+  COUNT(DISTINCT c.account_id) AS organizers_hit,
   SUM(c.amount) AS total_charged
 FROM charges c
 WHERE c.paid = true
@@ -107,12 +107,12 @@ GROUP BY CASE WHEN r.id IS NULL THEN 'not_refunded' ELSE 'refunded' END`;
     const repeatSet = new Set(repeats.rows.map((r) => str(r, 'card_fingerprint')));
     const repeatOffenders = rows.filter((row) => repeatSet.has(str(row, 'card_fingerprint')));
 
-    const hostCounts = new Map<string, number>();
+    const organizerCounts = new Map<string, number>();
     for (const row of rows) {
-      const host = str(row, 'host');
-      hostCounts.set(host, (hostCounts.get(host) ?? 0) + 1);
+      const organizer = str(row, 'organizer');
+      organizerCounts.set(organizer, (organizerCounts.get(organizer) ?? 0) + 1);
     }
-    const topHosts = Array.from(hostCounts.entries())
+    const topOrganizers = Array.from(organizerCounts.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3);
 
@@ -127,7 +127,7 @@ GROUP BY CASE WHEN r.id IS NULL THEN 'not_refunded' ELSE 'refunded' END`;
     const answer = [
       `${plural(rows.length, 'early fraud warning')} are still refundable — actionable, with no refund and no dispute against them yet. Together they are ${money(totalAmount)}.`,
       `Refunding now closes them out. Left alone, most turn into disputes, which costs the ${money(totalAmount)} anyway plus ${money(disputeFeeExposure)} in dispute fees and the hit to the dispute ratio. The oldest warning has been open since ${shortDate(num(oldest, 'warning_created'))}, so the window is closing on that one.`,
-      `${list(Array.from(byType.entries()).map(([type, n]) => `${n} ${type.replace(/_/g, ' ')}`))}. Concentration is ${list(topHosts.map(([host, n]) => `${host} (${n})`))}.`,
+      `${list(Array.from(byType.entries()).map(([type, n]) => `${n} ${type.replace(/_/g, ' ')}`))}. Concentration is ${list(topOrganizers.map(([organizer, n]) => `${organizer} (${n})`))}.`,
       repeatOffenders.length > 0
         ? `${plural(repeatOffenders.length, 'warning')} sit on cards that have more than one successful charge on the platform, so blocking the fingerprint matters as much as the refund — otherwise the same card comes back tomorrow.`
         : 'Each warning is on a distinct card fingerprint, so there is no repeat-offender pattern to block beyond these.',
@@ -151,7 +151,7 @@ GROUP BY CASE WHEN r.id IS NULL THEN 'not_refunded' ELSE 'refunded' END`;
         caption: 'Every refundable warning',
         columns: [
           { key: 'warning_id', label: 'Warning' },
-          { key: 'host', label: 'Host' },
+          { key: 'organizer', label: 'Organizer' },
           { key: 'fraud_type', label: 'Fraud type' },
           { key: 'amount', label: 'Amount', align: 'right', kind: 'money' },
           { key: 'outcome_risk_score', label: 'Risk', align: 'right', kind: 'number' },
@@ -162,10 +162,10 @@ GROUP BY CASE WHEN r.id IS NULL THEN 'not_refunded' ELSE 'refunded' END`;
       },
       resolution: {
         headline: `Refund all ${rows.length} with reverse_transfer, then blocklist the ${fingerprints.length} card fingerprints.`,
-        body: `reverse_transfer pulls the money back out of each host's balance rather than leaving StageGate to absorb it — these were fraudulent sales, and the host was paid for them. Blocking the fingerprints afterwards is what stops the same cards being used again next weekend.`,
+        body: `reverse_transfer pulls the money back out of each organizer's balance rather than leaving Marquee to absorb it — these were fraudulent sales, and the organizer was paid for them. Blocking the fingerprints afterwards is what stops the same cards being used again next weekend.`,
         bullets: [
           `${money(totalAmount)} refunded, ${money(disputeFeeExposure)} of dispute fees avoided if they would otherwise have been disputed`,
-          'reverse_transfer = true, so each host balance is debited for its own fraudulent sales',
+          'reverse_transfer = true, so each organizer balance is debited for its own fraudulent sales',
           `${fingerprints.length} fingerprints added to ${BLOCKLIST}`,
           'Radar rule thresholds cannot be changed through the API — see the Dashboard-only note',
         ],
@@ -178,16 +178,16 @@ GROUP BY CASE WHEN r.id IS NULL THEN 'not_refunded' ELSE 'refunded' END`;
           callLabel: 'create_refund',
           method: 'POST',
           path: '/v1/refunds',
-          plainEnglish: `Issues a full refund on all ${rows.length} charges, marked as fraudulent, and reverses the matching transfer so the money comes back out of each host's balance instead of StageGate's. ${rows.length} separate create_refund calls, one per charge.`,
+          plainEnglish: `Issues a full refund on all ${rows.length} charges, marked as fraudulent, and reverses the matching transfer so the money comes back out of each organizer's balance instead of Marquee's. ${rows.length} separate create_refund calls, one per charge.`,
           params: refundParams,
           totals: [
             { label: 'Charges refunded', value: String(rows.length) },
             { label: 'Total refunded', value: money(totalAmount), tone: totalAmount > 10_000_00 ? 'warn' : 'neutral' },
             { label: 'Transfers reversed', value: String(rows.filter((r) => str(r, 'transfer_id')).length) },
-            { label: 'Hosts affected', value: String(hostCounts.size) },
+            { label: 'Organizers affected', value: String(organizerCounts.size) },
           ],
           requiresSecondAck: totalAmount > 10_000_00,
-          secondAckLabel: `I understand this refunds more than $10,000 (${money(totalAmount)}) across ${hostCounts.size} hosts and debits their balances`,
+          secondAckLabel: `I understand this refunds more than $10,000 (${money(totalAmount)}) across ${organizerCounts.size} organizers and debits their balances`,
           variant: 'primary',
           batch: { size: 1, total: rows.length, unitLabel: 'refund' },
           run: async (simCtx, options) => {
@@ -223,7 +223,7 @@ GROUP BY CASE WHEN r.id IS NULL THEN 'not_refunded' ELSE 'refunded' END`;
           callLabel: 'POST /v1/radar/value_list_items',
           method: 'POST',
           path: '/v1/radar/value_list_items',
-          plainEnglish: `Adds each card fingerprint to the ${BLOCKLIST} value list. Any Radar rule that reads that list will block future attempts from these cards across every host on the platform.`,
+          plainEnglish: `Adds each card fingerprint to the ${BLOCKLIST} value list. Any Radar rule that reads that list will block future attempts from these cards across every organizer on the platform.`,
           params: { value_list: BLOCKLIST, values: fingerprints },
           totals: [
             { label: 'Fingerprints', value: String(fingerprints.length) },
@@ -262,7 +262,7 @@ GROUP BY CASE WHEN r.id IS NULL THEN 'not_refunded' ELSE 'refunded' END`;
           params: { customer: str(oldest, 'customer_id'), limit: 20 },
           totals: [
             { label: 'Customer', value: str(oldest, 'customer_id') },
-            { label: 'Host', value: str(oldest, 'host') },
+            { label: 'Organizer', value: str(oldest, 'organizer') },
           ],
           variant: 'secondary',
           run: (simCtx, options) =>

@@ -17,7 +17,7 @@ export const SCALE_FACTOR = 100;
 /** Number of sampled charge (payment attempt) rows. */
 export const TOTAL_CHARGES = 24_000;
 
-/** Connected accounts ("event hosts"). */
+/** Connected accounts ("event organizers"). */
 export const TOTAL_ACCOUNTS = 70;
 
 /**
@@ -61,8 +61,8 @@ export const FIXTURES = {
   disputesDueWithin72h: 10,
   actionableEfwsUnrefunded: 17,
   openReviews: 9,
-  hostsBlockedFromPayouts: 12,
-  negativeBalanceHosts: 3,
+  organizersBlockedFromPayouts: 12,
+  negativeBalanceOrganizers: 3,
   cancellingEventChargeCount: 2_100,
   offlineReaderVenue: 'Cascade Aquarium',
 } as const;

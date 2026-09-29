@@ -4,9 +4,9 @@ import { T, list, money, num, plural, sql, str, within } from '../helpers';
 import type { Scenario, ScenarioItem, ScenarioResult } from '../types';
 
 /**
- * "Which hosts with events in the next 14 days can't be paid out?"
+ * "Which organizers with events in the next 14 days can't be paid out?"
  *
- * The expensive version of this problem is a host who sells out a show, plays
+ * The expensive version of this problem is a organizer who sells out a show, plays
  * it, and then discovers they cannot be paid because a verification field was
  * never filled in. Catching it while the event is still two weeks out means an
  * onboarding link fixes it; catching it after the show means a support ticket
@@ -16,12 +16,12 @@ export const payoutHealth: Scenario = {
   id: 'payout_health',
   scope: 'internal',
   title: 'Payout readiness before the doors open',
-  suggestedPrompt: "Which hosts with events in the next 14 days can't be paid out?",
+  suggestedPrompt: "Which organizers with events in the next 14 days can't be paid out?",
   blurb:
     'Cross-references payout status against the event calendar, and sends the right onboarding link before money gets stuck.',
   triggers: [
-    "which hosts with events in the next 14 days can't be paid out",
-    'which hosts cannot be paid out',
+    "which organizers with events in the next 14 days can't be paid out",
+    'which organizers cannot be paid out',
     'payout health',
     'payouts blocked',
     'who can\'t get paid',
@@ -33,11 +33,11 @@ export const payoutHealth: Scenario = {
     const horizon = T.daysAhead(14);
 
     const blockedSql = sql`
--- Hosts with an event inside 14 days whose payouts are switched off.
+-- Organizers with an event inside 14 days whose payouts are switched off.
 -- The join to events is what makes this urgent rather than merely untidy.
 SELECT
   a.id AS account_id,
-  a.business_profile_name AS host,
+  a.business_profile_name AS organizer,
   a.type AS account_type,
   a.charges_enabled,
   a.payouts_enabled,
@@ -48,7 +48,7 @@ SELECT
   a.requirements_disabled_reason,
   a.requirements_current_deadline,
   a.payout_schedule_interval,
-  a.metadata_host_category,
+  a.metadata_organizer_category,
   e.id AS event_id,
   e.name AS event_name,
   e.venue,
@@ -66,11 +66,11 @@ WHERE a.payouts_enabled = false
 ORDER BY e.starts_at ASC`;
 
     const negativeSql = sql`
--- Separate problem, same page: hosts already carrying a negative balance.
+-- Separate problem, same page: organizers already carrying a negative balance.
 -- These need payouts held, not onboarding links.
 SELECT
   b.account_id,
-  a.business_profile_name AS host,
+  a.business_profile_name AS organizer,
   a.payouts_enabled,
   a.payout_schedule_interval,
   a.metadata_next_event_date,
@@ -82,10 +82,10 @@ WHERE b.available < 0
 ORDER BY b.available ASC`;
 
     const exposureSql = sql`
--- How much has already been sold by hosts who cannot currently be paid.
+-- How much has already been sold by organizers who cannot currently be paid.
 SELECT
   c.account_id,
-  a.business_profile_name AS host,
+  a.business_profile_name AS organizer,
   COUNT(*) AS paid_charges,
   SUM(c.amount - c.amount_refunded) AS net_volume
 FROM charges c
@@ -101,33 +101,33 @@ ORDER BY net_volume DESC`;
       ctx.sql(exposureSql),
     ]);
 
-    // One host can have several events inside the window; keep the soonest.
-    const byHost = new Map<string, Record<string, unknown>>();
+    // One organizer can have several events inside the window; keep the soonest.
+    const byOrganizer = new Map<string, Record<string, unknown>>();
     for (const row of blocked.rows) {
       const id = str(row, 'account_id');
-      const existing = byHost.get(id);
+      const existing = byOrganizer.get(id);
       if (!existing || num(row, 'event_starts_at') < num(existing, 'event_starts_at')) {
-        byHost.set(id, row);
+        byOrganizer.set(id, row);
       }
     }
-    const hosts = Array.from(byHost.values()).sort(
+    const organizers = Array.from(byOrganizer.values()).sort(
       (a, b) => num(a, 'event_starts_at') - num(b, 'event_starts_at'),
     );
 
-    const exposureByHost = new Map(
+    const exposureByOrganizer = new Map(
       exposure.rows.map((row) => [str(row, 'account_id'), num(row, 'net_volume')]),
     );
-    const totalExposure = hosts.reduce(
-      (sum, row) => sum + (exposureByHost.get(str(row, 'account_id')) ?? 0),
+    const totalExposure = organizers.reduce(
+      (sum, row) => sum + (exposureByOrganizer.get(str(row, 'account_id')) ?? 0),
       0,
     );
 
-    const pastDue = hosts.filter((row) => num(row, 'requirements_past_due_count') > 0);
-    const chargesOff = hosts.filter((row) => row.charges_enabled === false);
-    const soonest = hosts[0];
+    const pastDue = organizers.filter((row) => num(row, 'requirements_past_due_count') > 0);
+    const chargesOff = organizers.filter((row) => row.charges_enabled === false);
+    const soonest = organizers[0];
 
     const fieldCounts = new Map<string, number>();
-    for (const row of hosts) {
+    for (const row of organizers) {
       for (const field of str(row, 'requirements_currently_due').split(',').filter(Boolean)) {
         fieldCounts.set(field, (fieldCounts.get(field) ?? 0) + 1);
       }
@@ -136,9 +136,9 @@ ORDER BY net_volume DESC`;
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3);
 
-    const items: ScenarioItem[] = hosts.map((row) => {
+    const items: ScenarioItem[] = organizers.map((row) => {
       const accountId = str(row, 'account_id');
-      const host = str(row, 'host');
+      const organizer = str(row, 'organizer');
       const due = str(row, 'requirements_currently_due').split(',').filter(Boolean);
       const isPastDue = num(row, 'requirements_past_due_count') > 0;
       const eventAt = num(row, 'event_starts_at');
@@ -147,9 +147,9 @@ ORDER BY net_volume DESC`;
 
       return {
         id: accountId,
-        title: host,
+        title: organizer,
         subtitle: `${str(row, 'event_name')} — ${str(row, 'venue')}, ${str(row, 'city')}`,
-        href: `/hosts/${accountId}`,
+        href: `/organizers/${accountId}`,
         facts: [
           {
             label: 'Doors open',
@@ -163,7 +163,7 @@ ORDER BY net_volume DESC`;
           },
           {
             label: 'Already sold',
-            value: money(exposureByHost.get(accountId) ?? 0),
+            value: money(exposureByOrganizer.get(accountId) ?? 0),
           },
           {
             label: 'Accepting payments',
@@ -182,16 +182,16 @@ ORDER BY net_volume DESC`;
             callLabel: 'POST /v1/account_links',
             method: 'POST',
             path: '/v1/account_links',
-            plainEnglish: `Generates a single-use Stripe-hosted link for ${host} to complete ${due.length ? due.join(', ') : 'their outstanding requirements'}. The link expires in five minutes once opened, so it goes out by email rather than being stored.`,
+            plainEnglish: `Generates a single-use Stripe-hosted link for ${organizer} to complete ${due.length ? due.join(', ') : 'their outstanding requirements'}. The link expires in five minutes once opened, so it goes out by email rather than being stored.`,
             params: {
               account: accountId,
-              refresh_url: `https://stagegate.example/connect/refresh/${accountId}`,
-              return_url: `https://stagegate.example/connect/return/${accountId}`,
+              refresh_url: `https://marquee.example/connect/refresh/${accountId}`,
+              return_url: `https://marquee.example/connect/return/${accountId}`,
               type: linkType,
               collection_options: { fields: 'currently_due' },
             },
             totals: [
-              { label: 'Host', value: host },
+              { label: 'Organizer', value: organizer },
               { label: 'Link type', value: linkType },
               { label: 'Fields requested', value: due.length ? String(due.length) : 'currently_due' },
               { label: 'Event', value: longDate(eventAt) },
@@ -202,8 +202,8 @@ ORDER BY net_volume DESC`;
                 simCtx,
                 {
                   account: accountId,
-                  refresh_url: `https://stagegate.example/connect/refresh/${accountId}`,
-                  return_url: `https://stagegate.example/connect/return/${accountId}`,
+                  refresh_url: `https://marquee.example/connect/refresh/${accountId}`,
+                  return_url: `https://marquee.example/connect/return/${accountId}`,
                   type: linkType,
                   collection_options: { fields: 'currently_due' },
                 },
@@ -216,17 +216,17 @@ ORDER BY net_volume DESC`;
 
     const negativeItems: ScenarioItem[] = negative.rows.map((row) => {
       const accountId = str(row, 'account_id');
-      const host = str(row, 'host');
+      const organizer = str(row, 'organizer');
       const available = num(row, 'available');
       const nextEvent = str(row, 'metadata_next_event_date');
 
       return {
         id: `negative_${accountId}`,
-        title: `${host} — ${money(available)}`,
+        title: `${organizer} — ${money(available)}`,
         subtitle: nextEvent
           ? `Next event ${isoToShortDate(nextEvent)}`
           : 'No event currently on sale',
-        href: `/hosts/${accountId}`,
+        href: `/organizers/${accountId}`,
         facts: [
           { label: 'Available balance', value: money(available), tone: 'danger' },
           { label: 'Pending', value: money(num(row, 'pending')) },
@@ -238,7 +238,7 @@ ORDER BY net_volume DESC`;
           },
         ],
         recommendation:
-          'Switch this host to manual payouts. On a daily schedule, the next sale gets paid straight out and the negative balance never clears — it just rolls forward until Stripe starts failing payouts.',
+          'Switch this organizer to manual payouts. On a daily schedule, the next sale gets paid straight out and the negative balance never clears — it just rolls forward until Stripe starts failing payouts.',
         actions: [
           {
             id: `hold_payouts_${accountId}`,
@@ -247,13 +247,13 @@ ORDER BY net_volume DESC`;
             callLabel: 'POST /v1/accounts/:id',
             method: 'POST',
             path: `/v1/accounts/${accountId}`,
-            plainEnglish: `Switches ${host} from ${str(row, 'payout_schedule_interval')} to manual payouts. Incoming sales will settle against the ${money(Math.abs(available))} shortfall instead of being paid out, and nothing leaves until someone releases it.`,
+            plainEnglish: `Switches ${organizer} from ${str(row, 'payout_schedule_interval')} to manual payouts. Incoming sales will settle against the ${money(Math.abs(available))} shortfall instead of being paid out, and nothing leaves until someone releases it.`,
             params: {
               settings: { payouts: { schedule: { interval: 'manual' } } },
-              metadata: { hold_reason: 'negative_balance', held_by: 'stagegate_ask' },
+              metadata: { hold_reason: 'negative_balance', held_by: 'marquee_ask' },
             },
             totals: [
-              { label: 'Host', value: host },
+              { label: 'Organizer', value: organizer },
               { label: 'Shortfall', value: money(Math.abs(available)), tone: 'danger' },
               { label: 'Schedule', value: `${str(row, 'payout_schedule_interval')} → manual` },
             ],
@@ -264,7 +264,7 @@ ORDER BY net_volume DESC`;
                 accountId,
                 {
                   settings: { payouts: { schedule: { interval: 'manual' } } },
-                  metadata: { hold_reason: 'negative_balance', held_by: 'stagegate_ask' },
+                  metadata: { hold_reason: 'negative_balance', held_by: 'marquee_ask' },
                 },
                 { idempotencyKey: options.idempotencyKey },
               ),
@@ -274,62 +274,62 @@ ORDER BY net_volume DESC`;
     });
 
     const answer = [
-      `${plural(hosts.length, 'host')} have an event inside 14 days and cannot currently be paid out. Between them they have already sold ${money(totalExposure)}.`,
-      `The tightest is ${str(soonest, 'host')}: doors open ${longDate(num(soonest, 'event_starts_at'))}, ${within(num(soonest, 'event_starts_at'))}, with ${money(exposureByHost.get(str(soonest, 'account_id')) ?? 0)} already taken.`,
+      `${plural(organizers.length, 'organizer')} have an event inside 14 days and cannot currently be paid out. Between them they have already sold ${money(totalExposure)}.`,
+      `The tightest is ${str(soonest, 'organizer')}: doors open ${longDate(num(soonest, 'event_starts_at'))}, ${within(num(soonest, 'event_starts_at'))}, with ${money(exposureByOrganizer.get(str(soonest, 'account_id')) ?? 0)} already taken.`,
       `${pastDue.length} are past due rather than merely pending, which means Stripe has already given them a deadline and it has passed${chargesOff.length > 0 ? `, and ${chargesOff.length} have had charges disabled as well — they cannot even sell` : ''}. The most common missing fields are ${list(topFields.map(([field, n]) => `${field} (${n})`))}.`,
-      `Separately, ${plural(negative.rows.length, 'host')} are carrying a negative balance, the deepest at ${money(num(negative.rows[0], 'available'))}. Those need payouts held rather than onboarding links — on a daily schedule the shortfall never gets a chance to clear.`,
+      `Separately, ${plural(negative.rows.length, 'organizer')} are carrying a negative balance, the deepest at ${money(num(negative.rows[0], 'available'))}. Those need payouts held rather than onboarding links — on a daily schedule the shortfall never gets a chance to clear.`,
     ];
 
     return {
       answer,
       queries: [
-        { label: 'Payout-blocked hosts with imminent events', sql: blockedSql, result: blocked },
-        { label: 'Hosts in negative balance', sql: negativeSql, result: negative },
-        { label: 'Volume already sold by blocked hosts', sql: exposureSql, result: exposure },
+        { label: 'Payout-blocked organizers with imminent events', sql: blockedSql, result: blocked },
+        { label: 'Organizers in negative balance', sql: negativeSql, result: negative },
+        { label: 'Volume already sold by blocked organizers', sql: exposureSql, result: exposure },
       ],
       items: [...items, ...negativeItems],
       resolution: {
-        headline: `Send ${hosts.length} onboarding links now, and hold payouts on the ${negative.rows.length} negative balances.`,
-        body: `Onboarding links are the right tool for missing requirements — the host completes verification themselves on a Stripe-hosted page and no one on your side handles their documents. The negative balances are a different fix: moving them to manual payouts stops the shortfall rolling forward every day.`,
+        headline: `Send ${organizers.length} onboarding links now, and hold payouts on the ${negative.rows.length} negative balances.`,
+        body: `Onboarding links are the right tool for missing requirements — the organizer completes verification themselves on a Stripe-hosted page and no one on your side handles their documents. The negative balances are a different fix: moving them to manual payouts stops the shortfall rolling forward every day.`,
         bullets: [
-          `${money(totalExposure)} of already-sold volume is sitting behind these ${hosts.length} accounts`,
-          `${pastDue.length} past due, ${hosts.length - pastDue.length} pending verification`,
+          `${money(totalExposure)} of already-sold volume is sitting behind these ${organizers.length} accounts`,
+          `${pastDue.length} past due, ${organizers.length - pastDue.length} pending verification`,
           'Links are single-use and expire five minutes after they are opened',
         ],
       },
       actions: [
         {
           id: 'payout_links_all',
-          label: `Send all ${hosts.length} onboarding links`,
+          label: `Send all ${organizers.length} onboarding links`,
           surface: 'api',
           callLabel: 'POST /v1/account_links',
           method: 'POST',
           path: '/v1/account_links',
-          plainEnglish: `Generates an account link for each of the ${hosts.length} blocked hosts, requesting only their currently-due fields. One call per host.`,
+          plainEnglish: `Generates an account link for each of the ${organizers.length} blocked organizers, requesting only their currently-due fields. One call per organizer.`,
           params: {
-            accounts: hosts.map((row) => str(row, 'account_id')),
+            accounts: organizers.map((row) => str(row, 'account_id')),
             type: 'account_update',
             collection_options: { fields: 'currently_due' },
           },
           totals: [
-            { label: 'Hosts', value: String(hosts.length) },
+            { label: 'Organizers', value: String(organizers.length) },
             { label: 'Exposure covered', value: money(totalExposure) },
             { label: 'Soonest event', value: longDate(num(soonest, 'event_starts_at')) },
           ],
           variant: 'primary',
-          batch: { size: 1, total: hosts.length, unitLabel: 'link' },
+          batch: { size: 1, total: organizers.length, unitLabel: 'link' },
           run: async (simCtx, options) => {
             const links: unknown[] = [];
-            for (let i = 0; i < hosts.length; i += 1) {
-              const accountId = str(hosts[i], 'account_id');
+            for (let i = 0; i < organizers.length; i += 1) {
+              const accountId = str(organizers[i], 'account_id');
               links.push(
                 await api.createAccountLink(
                   simCtx,
                   {
                     account: accountId,
-                    refresh_url: `https://stagegate.example/connect/refresh/${accountId}`,
-                    return_url: `https://stagegate.example/connect/return/${accountId}`,
-                    type: hosts[i].charges_enabled === false ? 'account_onboarding' : 'account_update',
+                    refresh_url: `https://marquee.example/connect/refresh/${accountId}`,
+                    return_url: `https://marquee.example/connect/return/${accountId}`,
+                    type: organizers[i].charges_enabled === false ? 'account_onboarding' : 'account_update',
                     collection_options: { fields: 'currently_due' },
                   },
                   { idempotencyKey: `${options.idempotencyKey}-${i + 1}` },
@@ -337,8 +337,8 @@ ORDER BY net_volume DESC`;
               );
               options.onProgress?.({
                 done: i + 1,
-                total: hosts.length,
-                label: `Sent ${i + 1} of ${hosts.length}`,
+                total: organizers.length,
+                label: `Sent ${i + 1} of ${organizers.length}`,
               });
             }
             return { links: links.length };
@@ -346,18 +346,18 @@ ORDER BY net_volume DESC`;
         },
         {
           id: 'payout_hold_negatives',
-          label: `Hold payouts on ${negative.rows.length} hosts`,
+          label: `Hold payouts on ${negative.rows.length} organizers`,
           surface: 'api',
           callLabel: 'POST /v1/accounts/:id',
           method: 'POST',
           path: '/v1/accounts/:id',
-          plainEnglish: `Switches all ${negative.rows.length} negative-balance hosts to manual payouts so incoming sales settle the shortfall instead of being paid straight out.`,
+          plainEnglish: `Switches all ${negative.rows.length} negative-balance organizers to manual payouts so incoming sales settle the shortfall instead of being paid straight out.`,
           params: {
             accounts: negative.rows.map((row) => str(row, 'account_id')),
             settings: { payouts: { schedule: { interval: 'manual' } } },
           },
           totals: [
-            { label: 'Hosts', value: String(negative.rows.length) },
+            { label: 'Organizers', value: String(negative.rows.length) },
             {
               label: 'Total shortfall',
               value: money(negative.rows.reduce((s, r) => s + num(r, 'available'), 0)),
@@ -365,7 +365,7 @@ ORDER BY net_volume DESC`;
             },
           ],
           variant: 'danger',
-          batch: { size: 1, total: negative.rows.length, unitLabel: 'host' },
+          batch: { size: 1, total: negative.rows.length, unitLabel: 'organizer' },
           run: async (simCtx, options) => {
             const updated: unknown[] = [];
             for (let i = 0; i < negative.rows.length; i += 1) {
@@ -375,7 +375,7 @@ ORDER BY net_volume DESC`;
                   str(negative.rows[i], 'account_id'),
                   {
                     settings: { payouts: { schedule: { interval: 'manual' } } },
-                    metadata: { hold_reason: 'negative_balance', held_by: 'stagegate_ask' },
+                    metadata: { hold_reason: 'negative_balance', held_by: 'marquee_ask' },
                   },
                   { idempotencyKey: `${options.idempotencyKey}-${i + 1}` },
                 ),

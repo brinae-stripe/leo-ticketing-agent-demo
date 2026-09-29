@@ -47,11 +47,11 @@ export function openReviews(data: SimDataset) {
   return data.reviews.filter((r) => r.open).sort((a, b) => a.created - b.created);
 }
 
-export function hostsBlockedFromPayouts(data: SimDataset) {
+export function organizersBlockedFromPayouts(data: SimDataset) {
   return data.accounts.filter((a) => !a.payouts_enabled);
 }
 
-export function hostsWithUpcomingEventAndNoPayouts(data: SimDataset, days = 14) {
+export function organizersWithUpcomingEventAndNoPayouts(data: SimDataset, days = 14) {
   const cutoff = NOW + days * DAY;
   const upcoming = new Map<string, number>();
   for (const event of data.events) {
@@ -68,7 +68,7 @@ export function hostsWithUpcomingEventAndNoPayouts(data: SimDataset, days = 14) 
     .sort((a, b) => a.nextEventAt - b.nextEventAt);
 }
 
-export function negativeBalanceHosts(data: SimDataset) {
+export function negativeBalanceOrganizers(data: SimDataset) {
   return data.account_balances
     .filter((b) => b.available < 0)
     .sort((a, b) => a.available - b.available);
@@ -129,9 +129,9 @@ export function overviewKpis(data: SimDataset): Kpi[] {
   const totals = platformTotals(data);
   const dueSoon = disputesDueWithin(data, 72);
   const efws = refundableEarlyFraudWarnings(data);
-  const blockedHosts = hostsBlockedFromPayouts(data);
-  const blockedWithEvents = hostsWithUpcomingEventAndNoPayouts(data, 14);
-  const negative = negativeBalanceHosts(data);
+  const blockedOrganizers = organizersBlockedFromPayouts(data);
+  const blockedWithEvents = organizersWithUpcomingEventAndNoPayouts(data, 14);
+  const negative = negativeBalanceOrganizers(data);
   const readers = offlineReaders(data);
 
   return [
@@ -175,16 +175,16 @@ export function overviewKpis(data: SimDataset): Kpi[] {
     },
     {
       id: 'payout_blocked',
-      label: 'Hosts unable to pay out',
-      value: String(blockedHosts.length),
-      raw: blockedHosts.length,
+      label: 'Organizers unable to pay out',
+      value: String(blockedOrganizers.length),
+      raw: blockedOrganizers.length,
       hint: `${blockedWithEvents.length} have an event inside 14 days`,
       tone: blockedWithEvents.length > 6 ? 'bad' : 'warn',
-      ask: "Which hosts with events in the next 14 days can't be paid out?",
+      ask: "Which organizers with events in the next 14 days can't be paid out?",
     },
     {
       id: 'negative_balances',
-      label: 'Hosts in negative balance',
+      label: 'Organizers in negative balance',
       value: String(negative.length),
       raw: negative.length,
       hint: negative.length
@@ -193,7 +193,7 @@ export function overviewKpis(data: SimDataset): Kpi[] {
             currency: 'USD',
             maximumFractionDigits: 0,
           })}`
-        : 'All hosts positive',
+        : 'All organizers positive',
       tone: negative.length > 0 ? 'warn' : 'good',
     },
     {
@@ -378,7 +378,7 @@ export function paymentMethodMix(data: SimDataset): MixSlice[] {
   return list.sort((a, b) => b.attempts - a.attempts);
 }
 
-export interface HostVolumeRow {
+export interface OrganizerVolumeRow {
   accountId: string;
   name: string;
   category: string;
@@ -390,11 +390,11 @@ export interface HostVolumeRow {
   payoutsEnabled: boolean;
 }
 
-export function topHostsByVolume(
+export function topOrganizersByVolume(
   data: SimDataset,
   index: SimIndex,
   limit = 10,
-): HostVolumeRow[] {
+): OrganizerVolumeRow[] {
   const disputesByAccount = new Map<string, number>();
   for (const dispute of data.disputes) {
     const charge = index.chargeById.get(dispute.charge_id);
@@ -405,7 +405,7 @@ export function topHostsByVolume(
     );
   }
 
-  const rows = new Map<string, HostVolumeRow>();
+  const rows = new Map<string, OrganizerVolumeRow>();
   for (const charge of data.charges) {
     const account = index.accountById.get(charge.account_id);
     if (!account) continue;
@@ -414,7 +414,7 @@ export function topHostsByVolume(
       row = {
         accountId: account.id,
         name: account.business_profile_name,
-        category: account.metadata.host_category,
+        category: account.metadata.organizer_category,
         volume: 0,
         attempts: 0,
         succeeded: 0,
@@ -437,10 +437,10 @@ export function topHostsByVolume(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Per-host view                                                              */
+/* Per-organizer view                                                              */
 /* -------------------------------------------------------------------------- */
 
-export interface HostSummary {
+export interface OrganizerSummary {
   attempts: number;
   succeeded: number;
   successRate: number;
@@ -466,11 +466,11 @@ export interface HostSummary {
   outstandingServiceFees: number;
 }
 
-export function hostSummary(
+export function organizerSummary(
   data: SimDataset,
   index: SimIndex,
   accountId: string,
-): HostSummary {
+): OrganizerSummary {
   const charges = data.charges.filter((c) => c.account_id === accountId);
   const paid = charges.filter((c) => c.paid);
   const nonUs = charges.filter((c) => c.card_country !== 'US');
@@ -493,7 +493,7 @@ export function hostSummary(
       .filter((d) => index.chargeById.get(d.charge_id)?.account_id === accountId)
       .map((d) => d.id),
   );
-  const hostDisputes = data.disputes.filter((d) => disputeIds.has(d.id));
+  const organizerDisputes = data.disputes.filter((d) => disputeIds.has(d.id));
 
   const volume = paid.reduce((s, c) => s + c.amount, 0);
   const refunded = paid.reduce((s, c) => s + c.amount_refunded, 0);
@@ -509,8 +509,8 @@ export function hostSummary(
     volume,
     netVolume: volume - refunded,
     refunds: refunded,
-    disputes: hostDisputes.length,
-    openDisputes: hostDisputes.filter(
+    disputes: organizerDisputes.length,
+    openDisputes: organizerDisputes.filter(
       (d) => d.status === 'needs_response' || d.status === 'under_review',
     ).length,
     averageOrderValue: div(volume, paid.length),

@@ -1,4 +1,4 @@
-import type { HostCategory } from './types';
+import type { OrganizerCategory } from './types';
 
 /**
  * Static vocabulary the generator draws from. Kept out of generate.ts so the
@@ -10,11 +10,11 @@ export interface CategoryProfile {
   /** Median ticket price in cents; sigma controls the spread. */
   medianTicket: number;
   sigma: number;
-  /** Events per quarter for a typical host in this category. */
+  /** Events per quarter for a typical organizer in this category. */
   eventsPerQuarter: [min: number, max: number];
   /** Relative share of sampled charges. */
   volumeWeight: number;
-  /** Likelihood this host sells at a physical box office with a reader. */
+  /** Likelihood this organizer sells at a physical box office with a reader. */
   cardPresentBias: number;
   /** Likelihood buyers are outside the US (touring / destination events). */
   internationalBias: number;
@@ -23,7 +23,7 @@ export interface CategoryProfile {
   venues: string[];
 }
 
-export const CATEGORY_PROFILES: Record<HostCategory, CategoryProfile> = {
+export const CATEGORY_PROFILES: Record<OrganizerCategory, CategoryProfile> = {
   fandom_convention: {
     label: 'Fandom convention',
     medianTicket: 7_900,
@@ -194,9 +194,9 @@ export const CATEGORY_PROFILES: Record<HostCategory, CategoryProfile> = {
   },
 };
 
-export interface HeroHostSpec {
+export interface HeroOrganizerSpec {
   name: string;
-  category: HostCategory;
+  category: OrganizerCategory;
   city: string;
   /** Multiplier on the category volume weight — heroes have richer histories. */
   volumeMultiplier: number;
@@ -204,10 +204,10 @@ export interface HeroHostSpec {
 }
 
 /**
- * The 14 named hosts the scenarios lean on. Everything about them is fictional.
+ * The 14 named organizers the scenarios lean on. Everything about them is fictional.
  * They get more events, longer histories and hand-placed edge cases.
  */
-export const HERO_HOSTS: HeroHostSpec[] = [
+export const HERO_ORGANIZERS: HeroOrganizerSpec[] = [
   { name: 'Nebula Fan Expo', category: 'fandom_convention', city: 'Seattle', volumeMultiplier: 2.4, type: 'custom' },
   { name: 'Ink & Panel Comic Fest', category: 'comic_convention', city: 'Columbus', volumeMultiplier: 2.0, type: 'express' },
   { name: 'Museum of Impossible Things', category: 'immersive_museum', city: 'Chicago', volumeMultiplier: 2.2, type: 'custom' },
@@ -224,7 +224,7 @@ export const HERO_HOSTS: HeroHostSpec[] = [
   { name: 'Northgate Renaissance Faire', category: 'renaissance_faire', city: 'Kansas City', volumeMultiplier: 1.6, type: 'express' },
 ];
 
-/** Place-name fragments for procedurally named hosts. */
+/** Place-name fragments for procedurally named organizers. */
 export const PLACE_WORDS = [
   'Amberline', 'Bayside', 'Brightwater', 'Cedar Grove', 'Clearwater', 'Copperline',
   'Crown Point', 'Driftwood', 'Eastvale', 'Emberfield', 'Fairhaven', 'Foxglove',
@@ -237,7 +237,7 @@ export const PLACE_WORDS = [
   'Westbrook', 'Whitecap', 'Wildwood', 'Willowbrook', 'Windrow', 'Zephyr',
 ];
 
-/** Mascots for the minor-league hosts. */
+/** Mascots for the minor-league organizers. */
 export const MASCOTS = [
   'Otters', 'Falcons', 'Rhinos', 'Bison', 'Pelicans', 'Ravens', 'Coyotes',
   'Sturgeon', 'Badgers', 'Kingfishers', 'Mudcats', 'Wolverines', 'Hornets',

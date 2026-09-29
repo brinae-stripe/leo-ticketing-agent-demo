@@ -1,6 +1,6 @@
-# StageGate Ask
+# Marquee LEO
 
-A fully simulated demo of an internal *ask an agent* experience for **StageGate**, a
+A fully simulated demo of an internal *ask an agent* experience for **Marquee**, a
 fictional live-events ticketing platform running on Stripe Connect.
 
 A staff member asks a question in plain English. The agent answers from simulated Stripe
@@ -62,10 +62,10 @@ both Turbopack and webpack in [`next.config.mjs`](next.config.mjs), so `next bui
 
 | Route            | What is there                                                                                                   |
 | ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `/`              | KPI tiles, 13-week trend charts, top hosts by volume, and the entry point to the agent                          |
-| `/ask`           | The internal operations agent                                                                                   |
-| `/hosts`         | All 70 connected accounts, filterable by category and state                                                     |
-| `/hosts/[id]`    | One host: requirements, payouts, method mix, conversion by cohort, disputes, readers — plus the organizer copilot |
+| `/`              | KPI tiles, 13-week trend charts, top organizers by volume, and the entry point to the agent                          |
+| `/leo`           | The internal operations agent                                                                                   |
+| `/organizers`         | All 70 connected accounts, filterable by category and state                                                     |
+| `/organizers/[id]`    | One organizer: requirements, payouts, method mix, conversion by cohort, disputes, readers — plus the organizer copilot |
 | `/audit`         | Every simulated call this session made, with request and response                                               |
 | `/how-it-works`  | Architecture, the MCP-versus-API split, the Dashboard-only list, and the schema caveats                          |
 
@@ -127,7 +127,7 @@ body — and requires an approver name, which is recorded in the audit log.
 
 Set `requiresSecondAck: true` for a second checkbox. The project applies it to **aggregate
 refunds over $10,000** and to **every account debit**, regardless of size, since a debit
-moves money out of a host's balance in the opposite direction from a payout.
+moves money out of a organizer's balance in the opposite direction from a payout.
 
 Long-running work sets `batch`, which drives a progress bar. Small batches make one real
 call per item (17 refunds, 17 audit entries). Large ones chunk — the cancellation covers
@@ -138,7 +138,7 @@ call per item (17 refunds, 17 audit entries). Large ones chunk — the cancellat
 
 ## Scenarios
 
-**Internal operations** (`/ask`)
+**Internal operations** (`/leo`)
 
 | Scenario | Question |
 | --- | --- |
@@ -146,13 +146,13 @@ call per item (17 refunds, 17 audit entries). Large ones chunk — the cancellat
 | Disputes due | What disputes are due in the next 72 hours? |
 | Refundable EFWs | Which early fraud warnings are still refundable? |
 | Review queue | What's in the review queue? |
-| Payout health | Which hosts with events in the next 14 days can't be paid out? |
-| Settlement | Which hosts owe service fees from last week's events? |
-| Checkout optimizer | Which hosts' buyers would benefit from Apple Pay or pay-over-time? |
+| Payout health | Which organizers with events in the next 14 days can't be paid out? |
+| Settlement | Which organizers owe service fees from last week's events? |
+| Checkout optimizer | Which organizers' buyers would benefit from Apple Pay or pay-over-time? |
 | Event cancellation | Riverlight Music Festival is cancelled — refund everyone |
 | Terminal readiness | Are all readers at Cascade Aquarium online for tomorrow? |
 
-**Organizer copilot** (`/hosts/[id]` → Organizer copilot)
+**Organizer copilot** (`/organizers/[id]` → Organizer copilot)
 
 | Scenario | Question |
 | --- | --- |
@@ -191,7 +191,7 @@ See [`lib/stripe-sim/dashboard-only.ts`](lib/stripe-sim/dashboard-only.ts).
 70 connected accounts — fandom and comic conventions, immersive museums, music and food
 festivals, haunted attractions, light shows, performing arts companies, minor-league teams,
 aquariums, comedy clubs, photo-op operators, brand activations and a renaissance faire —
-including 14 named hosts with richer histories.
+including 14 named organizers with richer histories.
 
 **Scale factor 1:100.** The story is a platform doing ~2.4M payment attempts a quarter;
 holding that in a browser tab is not realistic, so 24,000 charge rows stand in for it. Rates
@@ -205,7 +205,7 @@ declines · debit ~2 pts below credit.
 
 Three deliberate departures from Sigma, all because a browser SQL engine has no JSON
 operators or array aggregates — `metadata.event_id` becomes `metadata_event_id`, array
-columns become a joined string plus a `_count`, and every host is US-based settling in USD
+columns become a joined string plus a `_count`, and every organizer is US-based settling in USD
 so the international signal lives in `card_country`. All four are listed on
 `/how-it-works`.
 
@@ -256,9 +256,9 @@ utilities are in [`app/globals.css`](app/globals.css).
 ## Deploying
 
 ```bash
-# If gh has more than one host configured, pin it — otherwise it will try the
+# If gh has more than one organizer configured, pin it — otherwise it will try the
 # first one and fail on its credentials.
-GH_HOST=github.com gh repo create stagegate-ask-demo --private --source=. --remote=origin --push
+GH_HOST=github.com gh repo create marquee-ask-demo --private --source=. --remote=origin --push
 
 vercel login            # required once
 vercel --yes --prod     # framework auto-detected as Next.js

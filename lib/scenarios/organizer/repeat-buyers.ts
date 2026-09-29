@@ -31,7 +31,7 @@ export const repeatBuyers: Scenario = {
 
   async run(ctx): Promise<ScenarioResult> {
     const accountId = ctx.accountId!;
-    const host = ctx.index.accountById.get(accountId)!;
+    const organizer = ctx.index.accountById.get(accountId)!;
 
     const repeatSql = sql`
 -- Repeat buyers, identified by card fingerprint rather than customer id.
@@ -114,7 +114,7 @@ ORDER BY e.starts_at ASC`;
     ) * 100;
 
     const answer = [
-      `Across the ${QUARTER_DAYS} days of data we hold, ${host.business_profile_name} sold to ${distinctBuyers.toLocaleString('en-US')} distinct cards over ${plural(paidOrders, 'order')}. ${repeaters.length.toLocaleString('en-US')} of those cards bought more than once — a repeat rate of ${percent(repeatBuyerRate, 1)}.`,
+      `Across the ${QUARTER_DAYS} days of data we hold, ${organizer.business_profile_name} sold to ${distinctBuyers.toLocaleString('en-US')} distinct cards over ${plural(paidOrders, 'order')}. ${repeaters.length.toLocaleString('en-US')} of those cards bought more than once — a repeat rate of ${percent(repeatBuyerRate, 1)}.`,
       `Repeat buyers punch above their weight: they are ${percent(repeatBuyerRate, 1)} of your buyers but ${percent(repeatOrderShare, 1)} of orders and ${percent(repeatRevenueShare, 1)} of revenue. Average lifetime spend is ${money(avgRepeatSpend)} against ${money(avgOneTimeSpend)} for a one-time buyer — roughly ${(avgRepeatSpend / Math.max(1, avgOneTimeSpend)).toFixed(1)}×. ${multiEvent.length.toLocaleString('en-US')} of them have come to more than one of your events.`,
       `On "versus last year" — I cannot answer that from here, and I would rather say so than guess. This warehouse holds the trailing quarter only: the earliest sale in scope is ${longDate(earliest)}. A genuine year-over-year comparison needs the same fingerprint data from the equivalent period last year, which means either a longer Data Pipeline retention window or your own historical export loaded alongside it.`,
       `What you can see today is the trend across your own shows this quarter: ${byEvent.rows.map((row) => `${str(row, 'event_name').split('—').pop()?.trim() || str(row, 'event_name')} at ${num(row, 'distinct_buyers').toLocaleString('en-US')} buyers`).slice(0, 4).join(', ')}.`,
@@ -165,7 +165,7 @@ ORDER BY e.starts_at ASC`;
                   unit_amount: presaleUnit,
                   currency: 'usd',
                   product_data: {
-                    name: `${host.business_profile_name} — returning buyer pre-sale`,
+                    name: `${organizer.business_profile_name} — returning buyer pre-sale`,
                   },
                 },
                 quantity: 1,
@@ -179,7 +179,7 @@ ORDER BY e.starts_at ASC`;
             { label: 'Ticket price', value: money(presaleUnit) },
             { label: 'Session cap', value: repeaters.length.toLocaleString('en-US') },
             { label: 'Cohort revenue to date', value: money(repeatRevenue) },
-            { label: 'Runs on', value: host.business_profile_name },
+            { label: 'Runs on', value: organizer.business_profile_name },
           ],
           variant: 'primary',
           run: (simCtx, options) =>
@@ -193,7 +193,7 @@ ORDER BY e.starts_at ASC`;
                       unit_amount: presaleUnit,
                       currency: 'usd',
                       product_data: {
-                        name: `${host.business_profile_name} — returning buyer pre-sale`,
+                        name: `${organizer.business_profile_name} — returning buyer pre-sale`,
                       },
                     },
                     quantity: 1,
