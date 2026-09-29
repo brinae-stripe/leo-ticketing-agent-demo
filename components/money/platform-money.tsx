@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { AskAgentButton } from '@/components/layout/app-shell';
 import { SimGate } from '@/components/layout/sim-gate';
+import { Recommendations } from '@/components/money/recommendations';
 import {
   MoneyStat,
   PlatformScaleNote,
@@ -22,6 +23,12 @@ import { PLATFORM } from '@/lib/brand';
 import { organizerBase } from '@/lib/nav';
 import { NOW } from '@/lib/sim/constants';
 import { count, longDate, money, percent, shortDate, untilLabel } from '@/lib/sim/format';
+import {
+  advanceRecommendations,
+  cardProgramRecommendations,
+  settlementRecommendations,
+  treasuryRecommendations,
+} from '@/lib/recommendations/platform';
 import { platformMoney } from '@/lib/sim/money';
 import { useSim } from '@/lib/store/sim-store';
 
@@ -119,8 +126,14 @@ function AdvancesBody() {
         />
       </div>
 
+      <Recommendations
+        items={advanceRecommendations(p)}
+        scope={{ id: 'page_platform_advances', title: 'Advances' }}
+        className="mt-8"
+      />
+
       {p.undelivered.length > 0 && (
-        <Card className="mt-6 border-amber-200">
+        <Card className="mt-8 border-amber-200">
           <CardHeader>
             <div>
               <CardTitle>Offers nobody has seen</CardTitle>
@@ -290,7 +303,13 @@ function TreasuryBody() {
         />
       </div>
 
-      <Card className="mt-6">
+      <Recommendations
+        items={treasuryRecommendations(p, data)}
+        scope={{ id: 'page_platform_treasury', title: 'Stored balances' }}
+        className="mt-8"
+      />
+
+      <Card className="mt-8">
         <CardHeader>
           <div>
             <CardTitle>Open accounts</CardTitle>
@@ -414,7 +433,13 @@ function CardsBody() {
         />
       </div>
 
-      <Card className="mt-6">
+      <Recommendations
+        items={cardProgramRecommendations(p, data)}
+        scope={{ id: 'page_platform_cards', title: 'Card program' }}
+        className="mt-8"
+      />
+
+      <Card className="mt-8">
         <CardHeader>
           <div>
             <CardTitle>By organizer</CardTitle>
@@ -535,7 +560,13 @@ function SettlementsBody() {
         />
       </div>
 
-      <Card className="mt-6">
+      <Recommendations
+        items={settlementRecommendations(data)}
+        scope={{ id: 'page_platform_settlements', title: 'Settlements' }}
+        className="mt-8"
+      />
+
+      <Card className="mt-8">
         <CardHeader>
           <div>
             <CardTitle>Service fee ledger</CardTitle>

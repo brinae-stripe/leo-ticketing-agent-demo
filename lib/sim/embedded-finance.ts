@@ -505,32 +505,57 @@ export function generateEmbeddedFinance(
       };
       issuing_cards.push(card);
 
+      // Approved spend per calendar month, so a monthly ceiling actually binds.
+      const monthlySpend = new Map<string, number>();
+      const monthKey = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 7);
+
       for (let i = 0; i < rng.int(4, 12); i += 1) {
         const created = NOW - rng.int(1, 80) * DAY;
         // Roughly one authorisation in nine is off-policy and declined by the
-        // card's own controls, which is the whole reason to set them.
+        // card's own category allow-list, which is the whole reason to set one.
         const offPolicy = rng.bool(0.11);
         const index = rng.int(0, OFF_POLICY_CATEGORIES.length - 1);
         const amount = Math.round(rng.between(limit * 0.02, limit * 0.4) / 1_000) * 1_000;
 
-        // A declined authorisation never moves money, so it does not consume
-        // headroom. An approved one does — and if there is not enough left, the
-        // card would have been declined rather than approved, so skip it.
-        if (!offPolicy) {
+        /**
+         * Two reasons a card refuses a purchase, and both have to be modelled or
+         * the data contradicts the product.
+         *
+         * A category decline is the allow-list. A spending-limit decline is the
+         * ceiling — and without it, approved spend accumulates past the monthly
+         * limit and a page ends up reporting a cardholder at 110% of a ceiling
+         * that the network would never have let them cross.
+         *
+         * Neither kind moves money, so neither consumes balance headroom.
+         */
+        const spentThisMonth = monthlySpend.get(monthKey(created)) ?? 0;
+        const overCeiling = !offPolicy && spentThisMonth + amount > limit;
+
+        let declineReason: string | null = null;
+        if (offPolicy) declineReason = 'card_controls_merchant_category';
+        else if (overCeiling) declineReason = 'card_controls_spending_limit';
+
+        if (declineReason === null) {
+          // An approved authorisation draws on the stored balance. If there is
+          // not enough left the card would have been declined for insufficient
+          // funds, which is a third case this dataset does not need — so skip it
+          // rather than record a decline the page would have to explain.
           const left = cardHeadroom.get(account.id) ?? 0;
           if (amount > left) continue;
           cardHeadroom.set(account.id, left - amount);
+          monthlySpend.set(monthKey(created), spentThisMonth + amount);
         }
 
+        const approved = declineReason === null;
         issuing_authorizations.push({
           id: rng.id('iauth', 20),
           card_id: card.id,
           account_id: account.id,
           amount,
           currency: CURRENCY,
-          approved: !offPolicy,
-          status: offPolicy ? 'closed' : created < NOW - 2 * DAY ? 'closed' : 'pending',
-          decline_reason: offPolicy ? 'card_controls_merchant_category' : null,
+          approved,
+          status: approved ? (created < NOW - 2 * DAY ? 'closed' : 'pending') : 'closed',
+          decline_reason: declineReason,
           merchant_name: offPolicy
             ? OFF_POLICY_MERCHANTS[index]
             : rng.pick(VENDOR_NAMES),

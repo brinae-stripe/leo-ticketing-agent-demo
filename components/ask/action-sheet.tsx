@@ -340,22 +340,39 @@ function SheetFooter({
 }
 
 /** Button that opens the sheet for one action. */
+/**
+ * `onOpenChange` lets a parent know a sheet is up.
+ *
+ * It exists because a successful action changes the data the parent rendered
+ * from, and a parent that re-derives its list can drop the very item whose sheet
+ * is open — unmounting the sheet mid-success and taking the response panel with
+ * it. Anything that recomputes its children from simulation state should hold
+ * them steady while this is true. See `Recommendations`.
+ */
 export function ActionButton({
   action,
   scenario,
   size = 'md',
+  onOpenChange,
 }: {
   action: ActionSpec;
   scenario: { id: string; title: string };
   size?: 'sm' | 'md';
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+
+  const change = (next: boolean) => {
+    setOpen(next);
+    onOpenChange?.(next);
+  };
+
   return (
     <>
       <Button
         variant={action.variant === 'danger' ? 'danger' : action.variant ?? 'primary'}
         size={size}
-        onClick={() => setOpen(true)}
+        onClick={() => change(true)}
       >
         {action.label}
       </Button>
@@ -363,7 +380,7 @@ export function ActionButton({
         key={open ? 'open' : 'closed'}
         action={action}
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={change}
         scenario={scenario}
       />
     </>

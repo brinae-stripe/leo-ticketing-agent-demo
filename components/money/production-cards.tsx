@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { AskAgentButton } from '@/components/layout/app-shell';
 import { SimGate } from '@/components/layout/sim-gate';
+import { Recommendations } from '@/components/money/recommendations';
 import {
   MoneyStat,
   PlatformScaleNote,
@@ -20,7 +21,9 @@ import {
   EmptyState,
   Skeleton,
 } from '@/components/ui/primitives';
+import { NOW } from '@/lib/sim/constants';
 import { count, humanize, money, percent, shortDate } from '@/lib/sim/format';
+import { productionCardRecommendations } from '@/lib/recommendations/organizer';
 import { organizerMoney } from '@/lib/sim/money';
 import { useSim } from '@/lib/store/sim-store';
 import { cn } from '@/lib/utils';
@@ -67,6 +70,21 @@ function Body({ accountId }: { accountId: string }) {
   const declined = m.authorizations.filter((a) => !a.approved);
   const approvedTotal = approved.reduce((s, a) => s + a.amount, 0);
 
+  // A monthly ceiling has to be compared against monthly spend. Summing every
+  // authorisation ever recorded and putting it next to a per-month limit reports
+  // cardholders at 130% of a ceiling the network would never have let them pass.
+  const monthStart = (() => {
+    const d = new Date(NOW * 1000);
+    return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000);
+  })();
+
+  const categoryDeclines = declined.filter(
+    (a) => a.decline_reason === 'card_controls_merchant_category',
+  ).length;
+  const limitDeclines = declined.filter(
+    (a) => a.decline_reason === 'card_controls_spending_limit',
+  ).length;
+
   if (m.cards.length === 0) {
     return (
       <>
@@ -90,6 +108,11 @@ function Body({ accountId }: { accountId: string }) {
             See the platform case
           </AskAgentButton>
         </div>
+        <Recommendations
+          items={productionCardRecommendations(m)}
+          scope={{ id: 'page_production_cards', title: 'Production Cards' }}
+          className="mt-8"
+        />
       </>
     );
   }
@@ -134,10 +157,19 @@ function Body({ accountId }: { accountId: string }) {
         />
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <Recommendations
+        items={productionCardRecommendations(m)}
+        scope={{ id: 'page_production_cards', title: 'Production Cards' }}
+        className="mt-8"
+      />
+
+      <div className="mt-8 grid gap-4 lg:grid-cols-2">
         {m.cards.map((card) => {
           const holder = holderById.get(card.cardholder_id);
           const spend = approved
+            .filter((a) => a.card_id === card.id && a.created >= monthStart)
+            .reduce((s, a) => s + a.amount, 0);
+          const allTime = approved
             .filter((a) => a.card_id === card.id)
             .reduce((s, a) => s + a.amount, 0);
           const limit = card.spending_limit_amount ?? 0;
@@ -171,6 +203,7 @@ function Body({ accountId }: { accountId: string }) {
                 <div className="mt-4">
                   <div className="flex items-baseline justify-between text-[12.5px]">
                     <span className="text-gray-500">
+                      This month against the{' '}
                       {humanize(card.spending_limit_interval ?? 'monthly')} limit
                     </span>
                     <span className="nums font-semibold text-gray-900">
@@ -186,6 +219,12 @@ function Body({ accountId }: { accountId: string }) {
                       style={{ width: `${Math.max(2, used * 100)}%` }}
                     />
                   </div>
+                </div>
+
+                <div className="mt-4">
+                  <p className="mt-1.5 text-[11.5px] text-gray-500">
+                    {money(allTime)} spent on this card in total
+                  </p>
                 </div>
 
                 <div className="mt-4">
@@ -217,9 +256,14 @@ function Body({ accountId }: { accountId: string }) {
                 Purchases the controls refused
               </CardTitle>
               <CardDescription>
-                Declined at authorisation by the card&apos;s own category allow-list. Nobody
-                reviewed these and no money moved — which is the difference between a card and
-                an expenses policy in a document.
+                Declined at authorisation by the card&apos;s own controls — nobody reviewed these
+                and no money moved, which is the difference between a card and an expenses policy
+                in a document.{' '}
+                {categoryDeclines > 0 && limitDeclines > 0
+                  ? `${categoryDeclines} fell outside the allowed categories and ${limitDeclines} would have crossed a monthly ceiling. Those are different problems: the first is policy, the second is budget.`
+                  : categoryDeclines > 0
+                    ? 'All of these fell outside the allowed merchant categories.'
+                    : 'All of these would have crossed a monthly ceiling — the categories were fine, the budget was not.'}
               </CardDescription>
             </div>
             <Badge tone="warn">{money(m.declinedAmount)}</Badge>
@@ -231,6 +275,7 @@ function Body({ accountId }: { accountId: string }) {
                   <th className="px-4 py-2.5 text-left font-semibold">Merchant</th>
                   <th className="px-4 py-2.5 text-left font-semibold">Category</th>
                   <th className="px-4 py-2.5 text-left font-semibold">Cardholder</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Refused by</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Attempted</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Date</th>
                 </tr>
@@ -248,6 +293,19 @@ function Body({ accountId }: { accountId: string }) {
                         {auth.merchant_category.replace(/_/g, ' ')}
                       </td>
                       <td className="px-4 py-2.5 text-gray-600">{holder?.name ?? '—'}</td>
+                      <td className="px-4 py-2.5">
+                        <Badge
+                          tone={
+                            auth.decline_reason === 'card_controls_spending_limit'
+                              ? 'warn'
+                              : 'neutral'
+                          }
+                        >
+                          {auth.decline_reason === 'card_controls_spending_limit'
+                            ? 'Monthly ceiling'
+                            : 'Category allow-list'}
+                        </Badge>
+                      </td>
                       <td className="nums px-4 py-2.5 text-right text-gray-400 line-through">
                         {money(auth.amount)}
                       </td>

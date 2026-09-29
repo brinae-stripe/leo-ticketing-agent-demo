@@ -229,6 +229,32 @@ accounts to open first in a live demo.
 
 ---
 
+## Recommendations on the money pages
+
+Each money page carries a **What LEO noticed** panel. Three rules keep it from
+becoming the filler it easily could be:
+
+1. **Every card is derived from rows on that page**, and `why` carries the numbers
+   that produced it. Nothing renders when the data does not support it — an empty
+   panel says so in one line rather than inventing three findings.
+2. **The resolution matches what is actually possible.** An action runs through
+   the same approval sheet as everything else and is tagged MCP or direct API
+   with its endpoint printed next to it. Where no endpoint exists it is a
+   Dashboard-only chip naming the owner. Where the answer needs analysis rather
+   than a call, it opens LEO with the question pre-filled.
+3. **Tone is urgency, not confidence.** `Needs a decision` means there is a clock
+   or money decaying. `Worth a look` means it will matter soon. `Context` means it
+   is worth knowing and needs nothing.
+
+The list is held steady while an approval sheet is open. A recommendation that
+resolves itself is normal — widen an allow-list and "these declines share a
+category" stops being true — but without freezing, the item disappears the moment
+the call lands and takes the open sheet, and the response panel, with it.
+
+See [`lib/recommendations/`](lib/recommendations/).
+
+---
+
 ## The simulated Stripe surface
 
 Tagged throughout the UI so the distinction is never lost: **MCP tools** are a curated
@@ -246,6 +272,7 @@ surface an agent can be pointed at safely; **direct API** calls are code you wri
 `POST /v1/capital/financing_offers/:id/mark_delivered` ·
 `POST /v1/treasury/financial_accounts` · `POST /v1/treasury/outbound_payments` ·
 `POST /v1/issuing/cardholders` · `POST /v1/issuing/cards` ·
+`POST /v1/issuing/cards/:id` (widen an allow-list, raise a ceiling) ·
 `POST /v1/reporting/report_runs` · `POST /v1/sigma/query_runs` ·
 `POST /v1/terminal/readers/:id/refund_payment`
 
@@ -297,6 +324,16 @@ would break the reconciliation.
 charge list instead of a 1:100 sample. Every consumer reads that column rather than re-deriving
 it, because getting the correction wrong once handed the largest financing offer on the platform
 to a test fixture.
+
+**A monthly ceiling actually binds.** Card authorisations are checked against
+per-calendar-month approved spend as the data is generated, so an authorisation
+that would cross the limit is recorded as declined with
+`card_controls_spending_limit` rather than approved. That gives the dataset both
+decline reasons — the allow-list is a policy control, the ceiling is a budget
+control, and they need opposite responses — and it means no page can report a
+cardholder at 130% of a limit the network would never have let them pass. The
+card tiles compare this month's spend against the monthly limit for the same
+reason.
 
 **Withhold rates are solved, not drawn.** A Capital advance's withhold rate is computed from the
 advance and a target payback window against the organizer's own run rate, and repayment progress

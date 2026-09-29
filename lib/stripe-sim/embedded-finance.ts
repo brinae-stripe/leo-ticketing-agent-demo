@@ -443,3 +443,66 @@ export async function createIssuingCard(
     },
   );
 }
+
+/**
+ * `POST /v1/issuing/cards/:id`
+ *
+ * Changing the controls on a card that is already out. Widening an allow-list or
+ * raising a ceiling is one call and takes effect on the next authorisation —
+ * which is the reason to set both tighter than feels necessary at creation. The
+ * cost of being too tight is a phone call; the cost of being too loose is a
+ * purchase you find out about at month end.
+ */
+export interface UpdateCardParams {
+  spending_controls?: {
+    spending_limits?: { amount: number; interval: SpendingLimitInterval }[];
+    allowed_categories?: string[];
+  };
+  status?: 'active' | 'inactive' | 'canceled';
+}
+
+export async function updateIssuingCard(
+  ctx: SimContext,
+  stripeAccount: string,
+  cardId: string,
+  params: UpdateCardParams,
+  options: CallOptions = {},
+): Promise<IssuingCard> {
+  const card = ctx.data.issuing_cards.find((c) => c.id === cardId);
+  if (!card) throw new Error(`No such card: ${cardId}`);
+
+  const limit = params.spending_controls?.spending_limits?.[0];
+  const categories = params.spending_controls?.allowed_categories;
+
+  const summary = params.status
+    ? `Set card •••• ${card.last4} to ${params.status}`
+    : limit
+      ? `Raised the ceiling on card •••• ${card.last4}`
+      : `Updated the allow-list on card •••• ${card.last4}`;
+
+  return perform(
+    ctx,
+    {
+      surface: 'api',
+      name: 'Update Issuing card',
+      method: 'POST',
+      path: `/v1/issuing/cards/${cardId}`,
+      stripeAccount,
+      idempotencyKey: options.idempotencyKey ?? null,
+    },
+    params,
+    summary,
+    () => {
+      const patch: Record<string, unknown> = {};
+      if (params.status) patch.status = params.status;
+      if (limit) {
+        patch.spending_limit_amount = limit.amount;
+        patch.spending_limit_interval = limit.interval;
+      }
+      if (categories) patch.allowed_categories = categories;
+
+      ctx.record({ kind: 'patch', table: 'issuing_cards', match: { id: cardId }, patch });
+      return { ...card, ...patch } as IssuingCard;
+    },
+  );
+}

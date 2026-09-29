@@ -139,6 +139,18 @@ ORDER BY amount DESC`;
 
     const declinedCount = declines.rows.reduce((s, r) => s + num(r, 'declined'), 0);
     const declinedAmount = declines.rows.reduce((s, r) => s + num(r, 'amount'), 0);
+    // The two controls do different jobs and the split is the interesting part:
+    // a category decline is policy, a ceiling decline is budget.
+    const categoryRows = declines.rows.filter(
+      (r) => str(r, 'decline_reason') === 'card_controls_merchant_category',
+    );
+    const limitRows = declines.rows.filter(
+      (r) => str(r, 'decline_reason') === 'card_controls_spending_limit',
+    );
+    const categoryCount = categoryRows.reduce((s, r) => s + num(r, 'declined'), 0);
+    const categoryAmount = categoryRows.reduce((s, r) => s + num(r, 'amount'), 0);
+    const limitCount = limitRows.reduce((s, r) => s + num(r, 'declined'), 0);
+    const limitAmount = limitRows.reduce((s, r) => s + num(r, 'amount'), 0);
     const approvedCount = approved.rows.reduce((s, r) => s + num(r, 'authorizations'), 0);
     const approvedAmount = approved.rows.reduce((s, r) => s + num(r, 'amount'), 0);
     // Typical allow-list width on the cards that exist, for the recommendation.
@@ -157,7 +169,7 @@ ORDER BY amount DESC`;
       `${money(achTotal)} left as bank transfers over the last 90 days — ${plural(achPayments, 'payment')} across ${plural(ach.rows.length, 'organizer')}. ${topVendor ? `It is concentrated: ${str(topVendor, 'vendor')} alone took ${money(num(topVendor, 'total_amount'))} over ${plural(num(topVendor, 'payments'), 'payment')} from ${plural(num(topVendor, 'organizers'), 'organizer')}.` : ''} Event costs are like this by nature — a short list of suppliers, every event, every year.`,
       `${withoutCards.length} of those organizers ${withoutCards.length === 1 ? 'has' : 'have'} no cards at all, covering ${money(withoutCardsTotal)} of that spend. For them every purchase is uncontrolled at the moment it happens and only visible once it has cleared.`,
       declinedCount > 0
-        ? `The ${cards.rows.length} organizers that do have cards show what changes. ${plural(declinedCount, 'authorization')} worth ${money(declinedAmount)} were refused by the cards' own spending controls — ${pct(declineRate, 1)} of all attempts — against ${money(approvedAmount)} approved. ${topDecline ? `The largest category refused was ${str(topDecline, 'merchant_category').replace(/_/g, ' ')}, ${money(num(topDecline, 'amount'))}.` : ''} None of that needed a policy conversation. The network declined it at authorisation.`
+        ? `The ${cards.rows.length} organizers that do have cards show what changes. ${plural(declinedCount, 'authorization')} worth ${money(declinedAmount)} were refused by the cards' own spending controls — ${pct(declineRate, 1)} of all attempts — against ${money(approvedAmount)} approved. Two different controls did that work: ${categoryCount > 0 ? `${plural(categoryCount, 'purchase')} worth ${money(categoryAmount)} fell outside the allowed merchant categories` : 'nothing fell outside the allowed categories'}, and ${limitCount > 0 ? `${plural(limitCount, 'purchase')} worth ${money(limitAmount)} would have taken a cardholder past their monthly ceiling` : 'nothing hit a monthly ceiling'}. ${topDecline ? `The largest single category refused was ${str(topDecline, 'merchant_category').replace(/_/g, ' ')}, ${money(num(topDecline, 'amount'))}.` : ''} None of it needed a policy conversation — the network declined it at authorisation.`
         : 'No card spend to read yet, so there is no control behaviour to compare.',
       `What this does not tell you is what the interchange is worth. Revenue share on issued cards is a commercial term rather than a published rate, so the honest figure to take into that conversation is the spend base — ${money(achTotal)} a quarter, ${money(achTotal * 4)} annualised — not a revenue estimate this query is in no position to make.`,
     ];

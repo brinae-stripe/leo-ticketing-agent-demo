@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { AskAgentButton } from '@/components/layout/app-shell';
 import { SimGate } from '@/components/layout/sim-gate';
+import { Recommendations } from '@/components/money/recommendations';
 import {
   ActivityTable,
   BalanceHero,
@@ -24,6 +25,7 @@ import {
   Skeleton,
 } from '@/components/ui/primitives';
 import { humanize, longDate, money, shortDate } from '@/lib/sim/format';
+import { eventAccountRecommendations } from '@/lib/recommendations/organizer';
 import { organizerActivity, organizerMoney } from '@/lib/sim/money';
 import { useSim } from '@/lib/store/sim-store';
 
@@ -83,6 +85,11 @@ function Body({ accountId }: { accountId: string }) {
             Size the float across the platform
           </AskAgentButton>
         </div>
+        <Recommendations
+          items={eventAccountRecommendations(m)}
+          scope={{ id: 'page_event_account', title: 'Event Account' }}
+          className="mt-8"
+        />
       </>
     );
   }
@@ -150,7 +157,13 @@ function Body({ accountId }: { accountId: string }) {
         />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
+      <Recommendations
+        items={eventAccountRecommendations(m)}
+        scope={{ id: 'page_event_account', title: 'Event Account' }}
+        className="mt-8"
+      />
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <Card>
           <CardHeader>
             <div>

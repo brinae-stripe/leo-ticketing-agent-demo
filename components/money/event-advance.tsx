@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { AskAgentButton } from '@/components/layout/app-shell';
 import { SimGate } from '@/components/layout/sim-gate';
+import { Recommendations } from '@/components/money/recommendations';
 import {
   DefinitionRow,
   MoneyStat,
@@ -25,6 +26,7 @@ import {
 import { CAPITAL_ELIGIBILITY } from '@/lib/sim/embedded-finance';
 import { NOW, DAY } from '@/lib/sim/constants';
 import { longDate, money, percent, untilLabel } from '@/lib/sim/format';
+import { eventAdvanceRecommendations } from '@/lib/recommendations/organizer';
 import { organizerMoney } from '@/lib/sim/money';
 import { useSim } from '@/lib/store/sim-store';
 
@@ -103,7 +105,13 @@ function Body({ accountId }: { accountId: string }) {
           />
         </div>
 
-        <Card className="mt-6">
+        <Recommendations
+          items={eventAdvanceRecommendations(m)}
+          scope={{ id: 'page_event_advance', title: 'Event Advance' }}
+          className="mt-8"
+        />
+
+        <Card className="mt-8">
           <CardHeader>
             <div>
               <CardTitle>Repayment</CardTitle>
@@ -220,7 +228,13 @@ function Body({ accountId }: { accountId: string }) {
           />
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Recommendations
+          items={eventAdvanceRecommendations(m)}
+          scope={{ id: 'page_event_advance', title: 'Event Advance' }}
+          className="mt-8"
+        />
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
               <div>

@@ -134,6 +134,12 @@ WHERE account_id = '${accountId}'
     const attempts = approvedCount + declinedCount;
 
     const existingLimit = cards.rows.reduce((s, r) => s + num(r, 'spending_limit_amount'), 0);
+    const categoryDeclines = declines.rows.filter(
+      (r) => str(r, 'decline_reason') === 'card_controls_merchant_category',
+    ).length;
+    const limitDeclines = declines.rows.filter(
+      (r) => str(r, 'decline_reason') === 'card_controls_spending_limit',
+    ).length;
 
     /* ---------------------- no card issuing on the account ---------------- */
 
@@ -186,7 +192,7 @@ WHERE account_id = '${accountId}'
         ? `You have ${plural(cards.rows.length, 'card')} out already — ${money(existingLimit)} of combined monthly ceiling across ${cards.rows.map((r) => str(r, 'cardholder')).join(', ')}. Adding one more for a ${role.toLowerCase()} is a two-step call: create the cardholder, then create the card with its controls.`
         : `Nothing issued yet. Getting a card to a ${role.toLowerCase()} is two calls — create the cardholder, then create the card with its spending controls attached.`,
       declinedCount > 0
-        ? `Before the new card, the case for setting the controls carefully. Over the last 90 days your cards approved ${plural(approvedCount, 'authorization')} worth ${money(approvedAmount)} and declined ${declinedCount} worth ${money(declinedAmount)} — ${pct(declinedCount / attempts, 1)} of attempts — every one of them refused by the card's own category allow-list rather than by anyone reviewing it. ${declines.rows[0] ? `The most recent was ${money(num(declines.rows[0], 'amount'))} at ${str(declines.rows[0], 'merchant_name')} on ${longDate(num(declines.rows[0], 'created'))}, ${str(declines.rows[0], 'cardholder')}'s card.` : ''}`
+        ? `Before the new card, the case for setting the controls carefully. Over the last 90 days your cards approved ${plural(approvedCount, 'authorization')} worth ${money(approvedAmount)} and declined ${declinedCount} worth ${money(declinedAmount)} — ${pct(declinedCount / attempts, 1)} of attempts — every one refused by the card itself rather than by anyone reviewing it. ${categoryDeclines > 0 && limitDeclines > 0 ? `${categoryDeclines} were outside the allowed categories and ${limitDeclines} would have crossed a monthly ceiling, which are different problems: the first is policy, the second is budget.` : categoryDeclines > 0 ? `All of them were outside the allowed merchant categories.` : `All of them would have crossed a monthly ceiling — the categories were fine, the budget was not.`} ${declines.rows[0] ? `The most recent was ${money(num(declines.rows[0], 'amount'))} at ${str(declines.rows[0], 'merchant_name')} on ${longDate(num(declines.rows[0], 'created'))}, ${str(declines.rows[0], 'cardholder')}'s card.` : ''}`
         : `Your cards have approved ${plural(approvedCount, 'authorization')} worth ${money(approvedAmount)} and declined nothing, which either means the allow-lists are set generously or nobody has tried to spend outside them yet.`,
       `The limit and the category list are set on the card at creation and enforced by the network when the card is presented. That is the difference worth understanding: an off-policy purchase is declined at the till, not discovered at month end when the only remaining option is asking for the money back.`,
       cappedByBalance
