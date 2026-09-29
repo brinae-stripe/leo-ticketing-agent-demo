@@ -1,5 +1,5 @@
 {
-  "name": "marquee-leo-demo",
+  "name": "leo-ticketing-agent-demo",
   "version": "1.0.0",
   "private": true,
   "description": "Simulated internal agent demo for Marquee, a fictional live-events ticketing platform on Stripe Connect.",

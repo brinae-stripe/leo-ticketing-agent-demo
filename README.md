@@ -317,7 +317,7 @@ utilities are in [`app/globals.css`](app/globals.css).
 ```bash
 # If gh has more than one GitHub host configured, pin it — otherwise it will try
 # first one and fail on its credentials.
-GH_HOST=github.com gh repo create marquee-leo-demo --private --source=. --remote=origin --push
+GH_HOST=github.com gh repo create leo-ticketing-agent-demo --private --source=. --remote=origin --push
 
 vercel login            # required once
 vercel --yes --prod     # framework auto-detected as Next.js

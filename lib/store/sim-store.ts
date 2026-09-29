@@ -15,7 +15,16 @@ import type { SimDataset, TableName } from '../sim/types';
 import { resetIds } from '../stripe-sim/ids';
 import type { AuditEntry, SimContext } from '../stripe-sim/types';
 
-const STORAGE_KEY = 'marquee-ask-demo/v1';
+/**
+ * Bump this whenever the dataset's shape changes.
+ *
+ * Only the mutations a session produced are persisted, and they are replayed
+ * against a freshly generated dataset on load. A mutation written against an
+ * older shape can therefore replay into a world that no longer matches it, so a
+ * new key is the cheap way to guarantee a clean slate — which is what you want
+ * before showing this to anyone.
+ */
+const STORAGE_KEY = 'leo-demo/v2';
 
 /**
  * Only inserts can invalidate an index — a patch mutates the row object that
