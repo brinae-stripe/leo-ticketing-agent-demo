@@ -77,9 +77,44 @@ async function runAction(action: ActionSpec, label: string): Promise<void> {
   }
 }
 
+/**
+ * Which connected account to run an organizer scenario against.
+ *
+ * Most of them only need an organizer with volume, so one default does. The
+ * embedded-finance ones need an organizer who is actually in the relevant pilot
+ * — Treasury and Issuing are on a handful of accounts by design, and probing a
+ * random organizer would exercise only the "you do not have this" branch and
+ * report every query as empty. Both branches matter, so this picks the account
+ * that reaches the interesting one.
+ */
+function probeAccount(scenarioId: string, fallback: string): string {
+  switch (scenarioId) {
+    case 'organizer_capital_advance': {
+      const live = data.capital_financing_offers.find((o) =>
+        ['undelivered', 'delivered'].includes(o.status),
+      );
+      return live?.account_id ?? fallback;
+    }
+    case 'organizer_treasury_pay_vendor': {
+      const withPayments = data.treasury_financial_accounts.find((fa) =>
+        data.treasury_outbound_payments.some((p) => p.account_id === fa.account_id),
+      );
+      return withPayments?.account_id ?? fallback;
+    }
+    case 'organizer_issuing_team_card': {
+      // Prefer an organizer whose controls have actually refused something —
+      // the decline list is the argument the scenario is built around.
+      const declined = data.issuing_authorizations.find((a) => !a.approved);
+      return declined?.account_id ?? data.issuing_cards[0]?.account_id ?? fallback;
+    }
+    default:
+      return fallback;
+  }
+}
+
 async function main(): Promise<void> {
   // Organizer scenarios need an account in scope. Use a hero organizer with volume.
-  const organizerOrganizer = index.accountByName.get('Nebula Fan Expo')!;
+  const defaultOrganizer = index.accountByName.get('Nebula Fan Expo')!;
 
   for (const scenario of ALL_SCENARIOS) {
     if (ONLY && !ONLY.startsWith('--') && scenario.id !== ONLY) continue;
@@ -97,10 +132,17 @@ async function main(): Promise<void> {
       console.log(`  matcher: ${match.how} (${match.reason})`);
     }
 
-    const ctx = scenarioContext(
-      scenario.scope === 'organizer' ? organizerOrganizer.id : undefined,
-      scenario.suggestedPrompt,
-    );
+    const accountId =
+      scenario.scope === 'organizer'
+        ? probeAccount(scenario.id, defaultOrganizer.id)
+        : undefined;
+    if (accountId) {
+      console.log(
+        `  account: ${index.accountById.get(accountId)?.business_profile_name} (${accountId})`,
+      );
+    }
+
+    const ctx = scenarioContext(accountId, scenario.suggestedPrompt);
 
     try {
       const started = Date.now();

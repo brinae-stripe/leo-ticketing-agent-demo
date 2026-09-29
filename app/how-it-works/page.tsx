@@ -1,5 +1,13 @@
 import type { Metadata } from 'next';
-import { CircleCheck, Database, LockKeyhole, ShieldCheck, TriangleAlert } from 'lucide-react';
+import {
+  Building2,
+  CircleCheck,
+  Database,
+  LockKeyhole,
+  ShieldCheck,
+  TriangleAlert,
+  UserRound,
+} from 'lucide-react';
 import Link from 'next/link';
 
 import { StadiumLights, Wordmark } from '@/components/brand/wordmark';
@@ -11,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/primitives';
+import { AGENT, AGENT_GLOSS, LENS, PLATFORM } from '@/lib/brand';
 import { INTERNAL_SCENARIOS, ORGANIZER_SCENARIOS } from '@/lib/scenarios';
 import { NOW_ISO, SCALE_FACTOR, TARGETS, TOTAL_ACCOUNTS, TOTAL_CHARGES } from '@/lib/sim/constants';
 import { SCHEMA_CAVEATS, TABLE_DOCS, TABLE_SOURCE_LABELS } from '@/lib/sql/tables';
@@ -18,8 +27,7 @@ import { DASHBOARD_ONLY } from '@/lib/stripe-sim/dashboard-only';
 
 export const metadata: Metadata = {
   title: 'How it works',
-  description:
-    'The architecture behind Marquee LEO, what is simulated, and where the boundaries are.',
+  description: `The architecture behind ${AGENT}, the two views it serves, what is simulated, and where the boundaries are.`,
 };
 
 const MCP_TOOLS = [
@@ -40,12 +48,33 @@ const API_CALLS = [
   { path: 'POST /v1/disputes/:id/close', why: 'Accepting a dispute.' },
   { path: 'POST /v1/reviews/:id/approve', why: 'Releasing a Radar review.' },
   { path: 'POST /v1/radar/value_list_items', why: 'Block and allow lists.' },
-  { path: 'POST /v1/transfers', why: 'Account debits — Stripe-Account is the organizer, destination is the platform.' },
+  {
+    path: 'POST /v1/transfers',
+    why: `Account debits — Stripe-Account is the organizer, destination is ${PLATFORM}.`,
+  },
   { path: 'POST /v1/transfers/:id/reversals', why: 'Clawing a transfer back.' },
-  { path: 'POST /v1/accounts/:id', why: 'Changing a payout schedule.' },
+  {
+    path: 'POST /v1/accounts/:id',
+    why: 'Payout schedules, and requesting the card_issuing capability.',
+  },
   { path: 'POST /v1/account_links', why: 'Onboarding links.' },
+  {
+    path: 'POST /v1/account_sessions',
+    why: 'Embedding a Stripe-hosted component the organizer completes themselves.',
+  },
   { path: 'POST /v1/payouts', why: 'Instant payouts, in the organizer context.' },
-  { path: 'POST /v1/payment_method_configurations/:id', why: 'Turning wallets or pay-over-time on.' },
+  {
+    path: 'POST /v1/payment_method_configurations/:id',
+    why: 'Turning wallets or pay-over-time on.',
+  },
+  {
+    path: 'POST /v1/capital/financing_offers/:id/mark_delivered',
+    why: 'Recording that an organizer has been shown an offer.',
+  },
+  { path: 'POST /v1/treasury/financial_accounts', why: 'Opening a stored balance.' },
+  { path: 'POST /v1/treasury/outbound_payments', why: 'Paying a vendor out of that balance.' },
+  { path: 'POST /v1/issuing/cardholders', why: 'Someone on the team who can hold a card.' },
+  { path: 'POST /v1/issuing/cards', why: 'The card, with its spending controls attached.' },
   { path: 'POST /v1/reporting/report_runs', why: 'Itemized fee and reconciliation reports.' },
   { path: 'POST /v1/sigma/query_runs', why: 'Scheduling a query.' },
   { path: 'POST /v1/terminal/readers/:id/refund_payment', why: 'Refunding at the reader.' },
@@ -54,30 +83,36 @@ const API_CALLS = [
 export default function Page() {
   return (
     <>
-      <section className="relative overflow-hidden bg-ink text-white">
-        <StadiumLights />
-        <div className="relative mx-auto max-w-[84rem] px-4 py-12 sm:px-6 sm:py-16">
-          <h1 className="font-display max-w-3xl text-[30px] font-black leading-[1.15] sm:text-[40px]">
-            How this demo is put together
-          </h1>
-          <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-white/70">
-            <Wordmark className="text-[15px]" /> is a fictional ticketing platform. The data,
-            the organizers and the events are all generated. So is every API call. What is real is
-            the shape: the table names, the endpoints, the approval flow, and the places where
-            an agent has to stop and ask a human.
-          </p>
-        </div>
-      </section>
-
-      <div className="mx-auto max-w-[84rem] space-y-10 px-4 py-10 sm:px-6">
+      <Hero />
+      <div className="mx-auto max-w-[84rem] space-y-12 px-4 py-10 sm:px-6">
         <Disclaimer />
-        <Architecture />
+        <TheFlow />
+        <TheTwoViews />
         <Surfaces />
         <DashboardOnlySection />
         <DataSection />
-        <ScenarioSection />
       </div>
     </>
+  );
+}
+
+function Hero() {
+  return (
+    <section className="relative overflow-hidden bg-ink text-white">
+      <StadiumLights />
+      <div className="relative mx-auto max-w-[84rem] px-4 py-12 sm:px-6 sm:py-16">
+        <h1 className="font-display max-w-3xl text-[30px] font-black leading-[1.15] sm:text-[40px]">
+          One pipeline, two views
+        </h1>
+        <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-white/70">
+          <Wordmark className="text-[15px]" /> is a fictional ticketing platform, and {AGENT} —
+          the {AGENT_GLOSS} — is the agent inside it. The same warehouse and the same approval
+          flow serve two audiences: the platform&apos;s own operators, and the event organizers
+          the platform sells to. The data, the organizers and the events are all generated. So is
+          every API call. What is real is the shape.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -99,7 +134,7 @@ function Disclaimer() {
               local state so the rest of the app reflects it.
             </p>
             <p>
-              The agent is not a language model either. It matches your question against a
+              {AGENT} is not a language model here either. It matches your question against a
               catalogue of {INTERNAL_SCENARIOS.length + ORGANIZER_SCENARIOS.length} scenarios by
               phrase and then by keyword, and falls back to telling you what it can do rather
               than guessing. The streaming effect is cosmetic.
@@ -116,7 +151,11 @@ function Disclaimer() {
   );
 }
 
-function Architecture() {
+/* -------------------------------------------------------------------------- */
+/* The flow                                                                   */
+/* -------------------------------------------------------------------------- */
+
+function TheFlow() {
   const stages = [
     {
       title: 'Data Pipeline',
@@ -125,17 +164,17 @@ function Architecture() {
     },
     {
       title: 'Warehouse',
-      body: 'Joined against platform-side tables Stripe has never seen — the event catalogue, gate scans, the service fee ledger.',
+      body: `Joined against ${PLATFORM}-side tables Stripe has never seen — the event catalogue, gate scans, the service fee ledger.`,
       tone: 'ink' as const,
     },
     {
-      title: 'Agent',
+      title: AGENT,
       body: 'Matches the question to a scenario, runs its SQL, and writes a narrative with the numbers in it.',
       tone: 'blue' as const,
     },
     {
       title: 'Human approval',
-      body: 'Request preview, totals, approver name. Large refunds and account debits need a second acknowledgement.',
+      body: 'Request preview, totals, approver name. Large refunds, account debits and money leaving to a third party need a second acknowledgement.',
       tone: 'blue' as const,
     },
     {
@@ -147,11 +186,12 @@ function Architecture() {
 
   return (
     <section>
-      <h2 className="font-display text-[22px] font-bold text-gray-900">The shape of it</h2>
+      <h2 className="font-display text-[24px] font-bold text-gray-900">The flow</h2>
       <p className="mt-1.5 max-w-3xl text-[14px] leading-relaxed text-gray-600">
-        The interesting join is the one Stripe cannot do for you. A dispute on a ticket is just
-        a dispute until you join it to the gate scan that proves the buyer walked in — that is
-        the difference between a queue you work and a queue you win.
+        Five steps, and the same five whichever view you are in. The interesting join is the one
+        Stripe cannot do for you: a dispute on a ticket is just a dispute until you join it to
+        the gate scan that proves the buyer walked in — that is the difference between a queue
+        you work and a queue you win.
       </p>
 
       <ol className="mt-5 grid gap-3 lg:grid-cols-5">
@@ -190,16 +230,177 @@ function Architecture() {
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* The two views                                                              */
+/* -------------------------------------------------------------------------- */
+
+interface ViewSpec {
+  key: 'platform' | 'organizer';
+  icon: typeof Building2;
+  accent: 'blue' | 'purple';
+  href: string;
+  hrefLabel: string;
+  scope: string;
+  sees: string;
+  cannotSee: string;
+  why: string;
+  scenarios: typeof INTERNAL_SCENARIOS;
+  footnote?: string;
+}
+
+const VIEWS: ViewSpec[] = [
+  {
+    key: 'platform',
+    icon: Building2,
+    accent: 'blue',
+    href: '/leo',
+    hrefLabel: `Open ${AGENT}`,
+    scope: `All ${TOTAL_ACCOUNTS} organizers, every event, and the platform's own balance.`,
+    sees: 'Everything. Cross-organizer aggregates, the fee ledger, who cannot be paid out, which financing offers have never been surfaced.',
+    cannotSee: 'Nothing is withheld — this view is the platform looking at its own book.',
+    why: `An internal tool. It earns ${PLATFORM} nothing directly; it makes a finance and operations team smaller than the volume would otherwise need.`,
+    scenarios: INTERNAL_SCENARIOS,
+  },
+  {
+    key: 'organizer',
+    icon: UserRound,
+    accent: 'purple',
+    href: '/organizers',
+    hrefLabel: 'Pick an organizer',
+    scope: 'One connected account, scoped by account_id in every query.',
+    sees: 'Their own money, buyers, checkout and cards — in plain language, with the SQL kept behind the panel.',
+    cannotSee: `Another organizer's rows, ${PLATFORM}'s margin on their volume, or any cross-organizer comparison. Those are the platform's business, not theirs.`,
+    why: `The one ${PLATFORM} can sell. Same pipeline, same approval flow, pointed at a single account and priced as a product.`,
+    scenarios: ORGANIZER_SCENARIOS,
+    footnote:
+      'Organizer scenarios only run scoped to one account. Open any organizer and use the Organizer copilot tab — or filter the list by stored balance or financing offer to find one with the embedded-finance products already switched on.',
+  },
+];
+
+function TheTwoViews() {
+  return (
+    <section>
+      <h2 className="font-display text-[24px] font-bold text-gray-900">The two views</h2>
+      <p className="mt-1.5 max-w-3xl text-[14px] leading-relaxed text-gray-600">
+        The difference between them is one clause in a WHERE, and that is the whole argument.
+        Building the agent once for internal operations means the organizer-facing version is not
+        a second project — it is the same thing with the scope narrowed, which is what makes it
+        something to sell rather than something to fund.
+      </p>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        {VIEWS.map((view) => {
+          const lens = LENS[view.key];
+          const Icon = view.icon;
+
+          return (
+            <Card key={view.key} className="flex h-full flex-col">
+              <CardHeader className="items-start">
+                <div className="flex items-start gap-3">
+                  <span
+                    className={[
+                      'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white',
+                      view.accent === 'blue' ? 'bg-blue-500' : 'bg-purple-500',
+                    ].join(' ')}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <CardTitle className="text-[16px]">{lens.label}</CardTitle>
+                    <CardDescription>
+                      {lens.persona} — {lens.personaRole}
+                    </CardDescription>
+                  </div>
+                </div>
+                <Badge tone={view.accent}>{view.scenarios.length} scenarios</Badge>
+              </CardHeader>
+
+              <CardBody className="flex flex-1 flex-col gap-4">
+                <blockquote
+                  className={[
+                    'border-l-2 pl-3 text-[13.5px] italic leading-relaxed text-gray-700',
+                    view.accent === 'blue' ? 'border-blue-300' : 'border-purple-300',
+                  ].join(' ')}
+                >
+                  &ldquo;{lens.quote}&rdquo;
+                </blockquote>
+
+                <dl className="space-y-2.5 text-[12.5px] leading-relaxed">
+                  <FactRow label="Scope" value={view.scope} />
+                  <FactRow label="Sees" value={view.sees} />
+                  <FactRow label="Cannot see" value={view.cannotSee} />
+                  <FactRow label="Why it exists" value={view.why} />
+                </dl>
+
+                <div>
+                  <h4 className="label-xs mb-2">What {lens.persona} asks</h4>
+                  <ul className="space-y-1.5">
+                    {view.scenarios.map((scenario) => (
+                      <li key={scenario.id} className="text-[12.5px] leading-snug">
+                        {view.key === 'platform' ? (
+                          <Link
+                            href={`/leo?q=${encodeURIComponent(scenario.suggestedPrompt)}`}
+                            className="text-blue-600 hover:underline"
+                          >
+                            {scenario.suggestedPrompt}
+                          </Link>
+                        ) : (
+                          <span className="text-gray-700">{scenario.suggestedPrompt}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="mt-auto pt-1">
+                  <Link
+                    href={view.href}
+                    className={[
+                      'inline-flex items-center gap-1.5 text-[13px] font-semibold hover:underline',
+                      view.accent === 'blue' ? 'text-blue-600' : 'text-purple-600',
+                    ].join(' ')}
+                  >
+                    {view.hrefLabel} →
+                  </Link>
+                  {view.footnote && (
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-gray-500">
+                      {view.footnote}
+                    </p>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function FactRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="w-[5.5rem] shrink-0 font-semibold text-gray-500">{label}</dt>
+      <dd className="text-gray-700">{value}</dd>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Surfaces                                                                   */
+/* -------------------------------------------------------------------------- */
+
 function Surfaces() {
   return (
     <section>
-      <h2 className="font-display text-[22px] font-bold text-gray-900">
+      <h2 className="font-display text-[24px] font-bold text-gray-900">
         Two surfaces, tagged everywhere
       </h2>
       <p className="mt-1.5 max-w-3xl text-[14px] leading-relaxed text-gray-600">
         Every action in this demo is labelled with how it would execute, because the difference
         matters when you build it. MCP tools are a curated surface the agent can be pointed at
-        safely. Everything else is code you write, own and secure yourself.
+        safely. Everything else is code you write, own and secure yourself — including all of
+        Capital, Treasury and Issuing, none of which the hosted tool surface covers today.
       </p>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -275,7 +476,7 @@ function Surfaces() {
               'The JSON body exactly as it would be sent',
               'Dollar and count totals, with the after-state where money moves',
               'A required approver name, recorded in the audit log',
-              'A second checkbox for refunds over $10,000 and for every account debit',
+              'A second checkbox for refunds over $10,000, every account debit, and any payment leaving to a third party',
             ].map((item) => (
               <li key={item} className="flex gap-2 text-[13px] leading-relaxed text-gray-700">
                 <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" />
@@ -293,18 +494,18 @@ function DashboardOnlySection() {
   const capabilities = Object.values(DASHBOARD_ONLY);
   return (
     <section>
-      <h2 className="font-display flex items-center gap-2 text-[22px] font-bold text-gray-900">
+      <h2 className="font-display flex items-center gap-2 text-[24px] font-bold text-gray-900">
         <LockKeyhole className="h-5 w-5 text-gray-500" />
         Things there is no button for
       </h2>
       <p className="mt-1.5 max-w-3xl text-[14px] leading-relaxed text-gray-600">
-        {capabilities.length} real Stripe capabilities have no API or MCP surface — they are
-        Dashboard settings, support requests, or account-level enablements. When a scenario
-        recommends one, the agent renders a chip explaining why and who should own it, rather
-        than a button that quietly does nothing. An agent that silently no-ops here is worse
-        than one that admits the limit.
+        {capabilities.length} real Stripe capabilities have no API or MCP surface to turn them on
+        — they are Dashboard settings, account-level enablements Stripe underwrites, or decisions
+        that belong to the organizer rather than to the platform. When a scenario recommends one,
+        the agent renders a chip explaining why and who owns it, rather than a button that quietly
+        does nothing. An agent that silently no-ops here is worse than one that admits the limit.
       </p>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {capabilities.map((capability) => (
           <Card key={capability.id}>
             <CardBody>
@@ -339,15 +540,16 @@ function DataSection() {
 
   return (
     <section>
-      <h2 className="font-display flex items-center gap-2 text-[22px] font-bold text-gray-900">
+      <h2 className="font-display flex items-center gap-2 text-[24px] font-bold text-gray-900">
         <Database className="h-5 w-5 text-purple-500" />
         The data
       </h2>
       <p className="mt-1.5 max-w-3xl text-[14px] leading-relaxed text-gray-600">
         {TOTAL_CHARGES.toLocaleString('en-US')} charge rows across {TOTAL_ACCOUNTS} organizers,
-        generated from a fixed seed so every run of this demo is byte-identical. &ldquo;Now&rdquo;
-        is pinned to <code className="font-mono text-[12.5px]">{NOW_ISO}</code> — nothing drifts
-        as the real clock moves.
+        generated from a fixed seed so every run of this demo is byte-identical.
+        &ldquo;Now&rdquo; is pinned to{' '}
+        <code className="font-mono text-[12.5px]">{NOW_ISO}</code> — nothing drifts as the real
+        clock moves.
       </p>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -410,7 +612,7 @@ function DataSection() {
             <div>
               <CardTitle>Where the schema departs from Sigma</CardTitle>
               <CardDescription>
-                Four deliberate simplifications, stated rather than hidden.
+                {SCHEMA_CAVEATS.length} deliberate simplifications, stated rather than hidden.
               </CardDescription>
             </div>
           </CardHeader>
@@ -429,7 +631,7 @@ function DataSection() {
         </Card>
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Object.entries(grouped).map(([source, tables]) => (
           <Card key={source}>
             <CardHeader>
@@ -453,63 +655,6 @@ function DataSection() {
                   </div>
                 ))}
               </dl>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ScenarioSection() {
-  return (
-    <section>
-      <h2 className="font-display text-[22px] font-bold text-gray-900">
-        The {INTERNAL_SCENARIOS.length + ORGANIZER_SCENARIOS.length} scenarios
-      </h2>
-      <p className="mt-1.5 max-w-3xl text-[14px] leading-relaxed text-gray-600">
-        Each one owns its trigger phrases, its SQL, its narrative and its actions. Adding
-        another is one file and one line in the registry — see the README.
-      </p>
-
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        {[
-          { heading: 'Internal operations', scenarios: INTERNAL_SCENARIOS },
-          { heading: 'Organizer copilot', scenarios: ORGANIZER_SCENARIOS },
-        ].map((group) => (
-          <Card key={group.heading}>
-            <CardHeader>
-              <CardTitle className="text-[13.5px]">{group.heading}</CardTitle>
-              <Badge tone="neutral">{group.scenarios.length}</Badge>
-            </CardHeader>
-            <CardBody>
-              <ol className="space-y-3">
-                {group.scenarios.map((scenario) => (
-                  <li key={scenario.id}>
-                    <p className="text-[13px] font-semibold text-gray-900">
-                      {group.heading === 'Internal operations' ? (
-                        <Link
-                          href={`/leo?q=${encodeURIComponent(scenario.suggestedPrompt)}`}
-                          className="text-blue-600 hover:underline"
-                        >
-                          {scenario.suggestedPrompt}
-                        </Link>
-                      ) : (
-                        scenario.suggestedPrompt
-                      )}
-                    </p>
-                    <p className="mt-0.5 text-[12.5px] leading-relaxed text-gray-600">
-                      {scenario.blurb}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-              {group.heading === 'Organizer copilot' && (
-                <p className="mt-4 text-[12.5px] leading-relaxed text-gray-500">
-                  Organizer scenarios only run scoped to a single connected account — open any
-                  organizer and use the Organizer copilot tab.
-                </p>
-              )}
             </CardBody>
           </Card>
         ))}

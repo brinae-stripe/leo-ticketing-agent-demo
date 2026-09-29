@@ -86,7 +86,7 @@ ORDER BY gross_volume DESC`;
 
     const configSql = sql`
 -- What each organizer's child payment method configuration actually has switched on.
--- A organizer can want Apple Pay and still not have it if onboarding left it off.
+-- An organizer can want Apple Pay and still not have it if onboarding left it off.
 SELECT
   p.id AS configuration_id,
   p.account_id,

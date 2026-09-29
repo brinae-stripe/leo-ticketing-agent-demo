@@ -7,6 +7,7 @@
 export type TableSource =
   | 'sigma'
   | 'terminal_api'
+  | 'embedded_finance_api'
   | 'platform'
   | 'sim_only';
 
@@ -39,6 +40,13 @@ export const TABLE_DOCS: TableDoc[] = [
   { name: 'account_balances', source: 'sim_only', description: 'Per-organizer available and pending balance. Derived — in production you would read /v1/balance per account.' },
   { name: 'platform_balances', source: 'sim_only', description: "Marquee's own balance. Derived the same way." },
   { name: 'terminal_readers', source: 'terminal_api', description: 'Reader inventory and last_seen_at. Live API shaped, not a warehouse table.' },
+  { name: 'capital_financing_offers', source: 'embedded_finance_api', description: 'Advances Stripe has underwritten per organizer, and whether the organizer has been shown them.' },
+  { name: 'capital_financing_summaries', source: 'embedded_finance_api', description: 'Drawn advances with the amount still outstanding after withholding.' },
+  { name: 'treasury_financial_accounts', source: 'embedded_finance_api', description: 'Stored-balance accounts, with cash and pending inbound and outbound.' },
+  { name: 'treasury_outbound_payments', source: 'embedded_finance_api', description: 'Vendor payments made out of a stored balance rather than a payout.' },
+  { name: 'issuing_cardholders', source: 'embedded_finance_api', description: 'People on an organizer\'s team who hold a card.' },
+  { name: 'issuing_cards', source: 'embedded_finance_api', description: 'Issued cards with their spending limit and allowed merchant categories.' },
+  { name: 'issuing_authorizations', source: 'embedded_finance_api', description: 'Card spend attempts, including the ones the card\'s own controls declined.' },
   { name: 'events', source: 'platform', description: "Marquee's own event catalogue. Not a Stripe object." },
   { name: 'admissions', source: 'platform', description: 'Gate scans. Doubles as dispute evidence.' },
   { name: 'service_fee_ledger', source: 'platform', description: 'Service fees accrued per event and whether collected.' },
@@ -50,6 +58,7 @@ export const SQL_TABLE_NAMES: string[] = TABLE_DOCS.map((table) => table.name);
 export const TABLE_SOURCE_LABELS: Record<TableSource, string> = {
   sigma: 'Sigma / Data Pipeline',
   terminal_api: 'Terminal API',
+  embedded_finance_api: 'Capital / Treasury / Issuing API',
   platform: 'Marquee platform data',
   sim_only: 'Derived for the simulation',
 };
@@ -78,5 +87,10 @@ export const SCHEMA_CAVEATS = [
     title: 'the sample is not uniform',
     detail:
       'Rates are read off a 1:100 sample, but the event used by the cancellation scenario carries its full charge list so the batch refund runs end to end against real rows rather than a fortieth of them.',
+  },
+  {
+    title: 'embedded finance is not sampled',
+    detail:
+      "The Capital, Treasury and Issuing tables hold one row per organizer, per financial account, per card — there is nothing to sample, so they are not. Their amounts are sized off the organizer's real volume rather than off the sampled rows, which means a $600,000 financing offer sits next to an organizer whose charge rows only add up to $40,000. Scenarios that mix the two multiply the sampled side by the scale factor in the SQL, where you can see it.",
   },
 ];

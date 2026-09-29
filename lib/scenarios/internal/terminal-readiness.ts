@@ -32,7 +32,7 @@ export const terminalReadiness: Scenario = {
   keywords: ['reader', 'readers', 'terminal', 'offline', 'online', 'gate', 'box', 'office', 'aquarium'],
 
   async run(ctx): Promise<ScenarioResult> {
-    // If the question names a organizer we know, use it; otherwise the venue the
+    // If the question names an organizer we know, use it; otherwise the venue the
     // suggested prompt refers to.
     const lowerQuery = ctx.query.toLowerCase();
     const named = ctx.data.accounts.find(

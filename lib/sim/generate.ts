@@ -26,6 +26,7 @@ import {
   PLACE_WORDS,
   READER_DEVICE_TYPES,
 } from './catalog';
+import { generateEmbeddedFinance } from './embedded-finance';
 import { Rng } from './rng';
 import type {
   Account,
@@ -1318,6 +1319,46 @@ export function generateDataset(seed: number = SEED): SimDataset {
     });
   }
 
+  /* ------------------------- embedded finance ---------------------------- */
+
+  // A second pass over the finished payments data, so eligibility and balances
+  // are derived from what actually settled rather than invented alongside it.
+  const trailingVolumeByAccount = new Map<string, number>();
+  const paidChargeCountByAccount = new Map<string, number>();
+  const trailingStart = NOW - 90 * DAY;
+  for (const charge of successfulCharges) {
+    if (charge.created < trailingStart) continue;
+    trailingVolumeByAccount.set(
+      charge.account_id,
+      (trailingVolumeByAccount.get(charge.account_id) ?? 0) +
+        (charge.amount - charge.amount_refunded),
+    );
+    paidChargeCountByAccount.set(
+      charge.account_id,
+      (paidChargeCountByAccount.get(charge.account_id) ?? 0) + 1,
+    );
+  }
+
+  const nextEventByAccount = new Map<string, number>();
+  for (const event of events) {
+    if (event.starts_at < NOW || event.status === 'cancelled') continue;
+    const current = nextEventByAccount.get(event.account_id);
+    if (current == null || event.starts_at < current) {
+      nextEventByAccount.set(event.account_id, event.starts_at);
+    }
+  }
+
+  const embeddedFinance = generateEmbeddedFinance(
+    {
+      accounts,
+      balances: account_balances,
+      trailingVolumeByAccount,
+      paidChargeCountByAccount,
+      nextEventByAccount,
+    },
+    seed + 8,
+  );
+
   return {
     accounts,
     events,
@@ -1344,6 +1385,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
     report_runs: [],
     query_runs: [],
     payment_method_configurations,
+    ...embeddedFinance,
     platform_requests: [],
   };
 }

@@ -81,7 +81,7 @@ GROUP BY metadata_settlement_mode`;
 
     const reversalSql = sql`
 -- Refunded charges whose transfer was never reversed. Every one of these is
--- money sitting in a organizer balance that Marquee has already handed back to a
+-- money sitting in an organizer balance that Marquee has already handed back to a
 -- buyer out of its own pocket.
 SELECT
   c.id AS charge_id,
@@ -210,7 +210,7 @@ LIMIT 50`;
     const answer = [
       `${plural(rows.length, 'organizer')} owe service fees on events that finished in the last 7 days — ${money(totalOwed)} in total, on ${money(totalGross)} of gross ticket volume across ${totalTickets.toLocaleString('en-US')} tickets.`,
       `All of them are on post-event billing, so nothing was taken at charge time. ${coverable.length} have enough in their balance to cover the debit today; ${short.length > 0 ? `${short.length} do not and would be pushed negative, so those need an invoice or another cycle instead` : 'every one of them clears'}.`,
-      `Worth noting what this costs in effort: the same ${money(totalGross)} under on-charge billing would have collected roughly ${money(counterfactual)} automatically, at ${percent(onChargePercent, 1)} + ${money(onChargeFixed)} per ticket, with no collection step and no risk of a organizer spending the money first. The post-event schedule is ${percent(num(postEventMode, 'avg_fee_percent'), 1)} + ${money(num(postEventMode, 'avg_fee_fixed_cents'))} — about ${money(totalOwed - counterfactual)} more revenue on this volume, which is the premium for carrying the collection risk.`,
+      `Worth noting what this costs in effort: the same ${money(totalGross)} under on-charge billing would have collected roughly ${money(counterfactual)} automatically, at ${percent(onChargePercent, 1)} + ${money(onChargeFixed)} per ticket, with no collection step and no risk of an organizer spending the money first. The post-event schedule is ${percent(num(postEventMode, 'avg_fee_percent'), 1)} + ${money(num(postEventMode, 'avg_fee_fixed_cents'))} — about ${money(totalOwed - counterfactual)} more revenue on this volume, which is the premium for carrying the collection risk.`,
       reversals.rows.length > 0
         ? `Separately, ${plural(reversals.rows.length, 'refunded charge')} still have an un-reversed transfer, totalling ${money(reversalTotal)}. Marquee refunded those buyers out of its own balance while the organizer kept the money.`
         : 'Every refunded charge already has its transfer reversed, so there is nothing to claw back there.',
@@ -239,7 +239,7 @@ LIMIT 50`;
       },
       resolution: {
         headline: `Debit ${debitable.length} organizers for ${money(debitable.reduce((s, r) => s + num(r, 'fee_owed'), 0))}, and reverse ${reversals.rows.length} stale transfers.`,
-        body: `Debit only the organizers whose balance covers it — pushing a organizer negative to collect a fee turns a clean settlement into a support conversation and a payout failure. Reversing the transfers on refunded charges is separate but should go out in the same run: that money is already gone from Marquee's side.`,
+        body: `Debit only the organizers whose balance covers it — pushing an organizer negative to collect a fee turns a clean settlement into a support conversation and a payout failure. Reversing the transfers on refunded charges is separate but should go out in the same run: that money is already gone from Marquee's side.`,
         bullets: [
           `${money(totalOwed)} owed, ${money(debitable.reduce((s, r) => s + num(r, 'fee_owed'), 0))} collectable today`,
           `Every debit runs with Stripe-Account: <organizer> and destination: ${PLATFORM_ACCOUNT_ID}`,

@@ -545,6 +545,76 @@ export function organizerSummary(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Embedded finance, per organizer                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Which of Capital, Treasury and Issuing an organizer actually has.
+ *
+ * Exists so the list and the detail page can badge it. Treasury and Issuing are
+ * on a handful of accounts by design, and without a badge the only way to find
+ * one is to open organizers until you hit a pilot account — which is a bad way
+ * to spend the middle of a demo.
+ */
+export interface EmbeddedFinanceStatus {
+  capital:
+    | { state: 'none' }
+    | { state: 'offered'; surfaced: boolean; amount: number; expiresAfter: number }
+    | { state: 'drawn'; advanced: number; remaining: number }
+    | { state: 'lapsed'; amount: number };
+  /** null when the organizer has no financial account at all. */
+  treasuryCash: number | null;
+  treasuryCommitted: number;
+  cards: number;
+  cardLimit: number;
+  /** True if any of the three is present, which is what the badge row keys off. */
+  any: boolean;
+}
+
+export function embeddedFinanceStatus(
+  data: SimDataset,
+  accountId: string,
+): EmbeddedFinanceStatus {
+  const summary = data.capital_financing_summaries.find((s) => s.account_id === accountId);
+  const offers = data.capital_financing_offers.filter((o) => o.account_id === accountId);
+  const live = offers.find(
+    (o) => o.status === 'undelivered' || o.status === 'delivered',
+  );
+  const lapsed = offers.find((o) => o.status === 'expired' || o.status === 'canceled');
+
+  // Drawn beats offered: an outstanding advance is the more important fact, and
+  // Stripe writes one at a time so they cannot both be actionable.
+  const capital: EmbeddedFinanceStatus['capital'] = summary
+    ? { state: 'drawn', advanced: summary.advance_amount, remaining: summary.remaining_amount }
+    : live
+      ? {
+          state: 'offered',
+          surfaced: live.status === 'delivered',
+          amount: live.offered_amount,
+          expiresAfter: live.expires_after,
+        }
+      : lapsed
+        ? { state: 'lapsed', amount: lapsed.offered_amount }
+        : { state: 'none' };
+
+  const financialAccount = data.treasury_financial_accounts.find(
+    (a) => a.account_id === accountId && a.status === 'open',
+  );
+  const cards = data.issuing_cards.filter(
+    (c) => c.account_id === accountId && c.status === 'active',
+  );
+
+  return {
+    capital,
+    treasuryCash: financialAccount?.balance_cash ?? null,
+    treasuryCommitted: financialAccount?.balance_outbound_pending ?? 0,
+    cards: cards.length,
+    cardLimit: cards.reduce((sum, c) => sum + (c.spending_limit_amount ?? 0), 0),
+    any: capital.state !== 'none' || financialAccount != null || cards.length > 0,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Per-event view                                                             */
 /* -------------------------------------------------------------------------- */
 

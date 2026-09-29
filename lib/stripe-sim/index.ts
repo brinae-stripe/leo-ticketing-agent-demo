@@ -9,6 +9,7 @@
 
 export * as mcp from './mcp';
 export * as api from './api';
+export * as ef from './embedded-finance';
 
 export { PLATFORM_ACCOUNT_ID, previewHeaders, nextLatency } from './core';
 export { DASHBOARD_ONLY, dashboardOnly } from './dashboard-only';

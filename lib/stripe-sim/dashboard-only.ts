@@ -15,7 +15,9 @@ export type DashboardOnlyId =
   | 'card_account_updater'
   | 'adaptive_acceptance'
   | 'smart_disputes'
-  | 'instant_bank_payments';
+  | 'instant_bank_payments'
+  | 'treasury_enablement'
+  | 'capital_offer_acceptance';
 
 export interface DashboardOnlyCapability {
   id: DashboardOnlyId;
@@ -68,6 +70,20 @@ export const DASHBOARD_ONLY: Record<DashboardOnlyId, DashboardOnlyCapability> = 
     why: 'Instant Bank Payments requires account review and enablement by Stripe before it can be added to a payment method configuration.',
     where: 'Dashboard → Settings → Payment methods, then Stripe review',
     owner: 'Payments lead + Stripe account team',
+  },
+  treasury_enablement: {
+    id: 'treasury_enablement',
+    label: 'Enable Treasury on the platform',
+    why: 'Treasury is invite-only and underwritten by Stripe and its bank partners. The API can open a financial account once the capability is active, but nothing in the API requests the capability in the first place.',
+    where: 'Your Stripe account team',
+    owner: 'Finance lead + Stripe account team',
+  },
+  capital_offer_acceptance: {
+    id: 'capital_offer_acceptance',
+    label: 'Accept a financing offer',
+    why: 'The organizer takes on the liability, so the organizer has to agree to the terms — in a Stripe-hosted surface, which the platform can embed but cannot complete. There is no endpoint that accepts an offer on someone else\'s behalf, by design.',
+    where: 'Embedded Connect component, or the organizer\'s Stripe-hosted dashboard',
+    owner: 'The organizer',
   },
 };
 

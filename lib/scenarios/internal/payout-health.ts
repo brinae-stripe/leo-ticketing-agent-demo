@@ -6,7 +6,7 @@ import type { Scenario, ScenarioItem, ScenarioResult } from '../types';
 /**
  * "Which organizers with events in the next 14 days can't be paid out?"
  *
- * The expensive version of this problem is a organizer who sells out a show, plays
+ * The expensive version of this problem is an organizer who sells out a show, plays
  * it, and then discovers they cannot be paid because a verification field was
  * never filled in. Catching it while the event is still two weeks out means an
  * onboarding link fixes it; catching it after the show means a support ticket

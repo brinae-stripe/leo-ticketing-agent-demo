@@ -130,6 +130,39 @@ function flattenInvoices(data: SimDataset): Row[] {
   }));
 }
 
+/** Same array-flattening convention as `accounts.requirements_*`. */
+function flattenFinancialAccounts(data: SimDataset): Row[] {
+  return data.treasury_financial_accounts.map((a) => ({
+    id: a.id,
+    account_id: a.account_id,
+    status: a.status,
+    active_features: a.active_features.join(','),
+    active_features_count: a.active_features.length,
+    balance_cash: a.balance_cash,
+    balance_inbound_pending: a.balance_inbound_pending,
+    balance_outbound_pending: a.balance_outbound_pending,
+    currency: a.currency,
+    created: a.created,
+  }));
+}
+
+function flattenIssuingCards(data: SimDataset): Row[] {
+  return data.issuing_cards.map((c) => ({
+    id: c.id,
+    cardholder_id: c.cardholder_id,
+    account_id: c.account_id,
+    last4: c.last4,
+    brand: c.brand,
+    type: c.type,
+    status: c.status,
+    spending_limit_amount: c.spending_limit_amount,
+    spending_limit_interval: c.spending_limit_interval,
+    allowed_categories: c.allowed_categories.join(','),
+    allowed_categories_count: c.allowed_categories.length,
+    created: c.created,
+  }));
+}
+
 /** Every table the agent's SQL can reference, in its SQL-facing shape. */
 export function sqlTables(data: SimDataset): Record<string, Row[]> {
   return {
@@ -159,6 +192,13 @@ export function sqlTables(data: SimDataset): Record<string, Row[]> {
     report_runs: data.report_runs as unknown as Row[],
     query_runs: data.query_runs as unknown as Row[],
     payment_method_configurations: flattenPmc(data),
+    capital_financing_offers: data.capital_financing_offers as unknown as Row[],
+    capital_financing_summaries: data.capital_financing_summaries as unknown as Row[],
+    treasury_financial_accounts: flattenFinancialAccounts(data),
+    treasury_outbound_payments: data.treasury_outbound_payments as unknown as Row[],
+    issuing_cardholders: data.issuing_cardholders as unknown as Row[],
+    issuing_cards: flattenIssuingCards(data),
+    issuing_authorizations: data.issuing_authorizations as unknown as Row[],
     platform_requests: data.platform_requests as unknown as Row[],
   };
 }

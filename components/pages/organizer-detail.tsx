@@ -22,7 +22,7 @@ import { ORGANIZER_SCENARIOS } from '@/lib/scenarios';
 import { CATEGORY_PROFILES } from '@/lib/sim/catalog';
 import { NOW } from '@/lib/sim/constants';
 import { dateTime, humanize, isoToShortDate, longDate, money, percent, untilLabel } from '@/lib/sim/format';
-import { organizerSummary } from '@/lib/sim/metrics';
+import { embeddedFinanceStatus, organizerSummary } from '@/lib/sim/metrics';
 import { useSim } from '@/lib/store/sim-store';
 import { cn } from '@/lib/utils';
 
@@ -60,12 +60,17 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
     [account, accountId, data, index],
   );
 
+  const finance = React.useMemo(
+    () => embeddedFinanceStatus(data, accountId),
+    [accountId, data],
+  );
+
   if (!account || !summary) {
     return (
       <div className="mx-auto max-w-[84rem] px-4 py-10 sm:px-6">
         <EmptyState
           title="No such organizer"
-          description="That account id is not in the seeded dataset. It may have been from an older demo session — reset the demo data or pick a organizer from the list."
+          description="That account id is not in the seeded dataset. It may have been from an older demo session — reset the demo data or pick an organizer from the list."
         />
         <div className="mt-4">
           <Link href="/organizers" className="text-[13px] font-medium text-blue-600 hover:underline">
@@ -126,6 +131,22 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
               {!account.charges_enabled && <Badge tone="danger">Charges disabled</Badge>}
               {summary.available < 0 && <Badge tone="warn">Negative balance</Badge>}
               <Badge tone="ink">{humanize(account.metadata.settlement_mode)} billing</Badge>
+              {/* Deliberately no amounts here. These rows are at platform scale
+                  and the stat tiles below are at sample scale, so putting the
+                  two next to each other would read as a contradiction. The
+                  figures live in the embedded-finance card, labelled. */}
+              {finance.capital.state === 'offered' && (
+                <Badge tone={finance.capital.surfaced ? 'blue' : 'warn'}>
+                  Financing offer{finance.capital.surfaced ? '' : ' · not surfaced'}
+                </Badge>
+              )}
+              {finance.capital.state === 'drawn' && <Badge tone="blue">Advance outstanding</Badge>}
+              {finance.treasuryCash != null && <Badge tone="purple">Stored balance</Badge>}
+              {finance.cards > 0 && (
+                <Badge tone="purple">
+                  {finance.cards} {finance.cards === 1 ? 'card' : 'cards'}
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -213,6 +234,91 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
                   </dl>
                 </CardBody>
               </Card>
+
+              {finance.any && (
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <div>
+                      <CardTitle>Embedded finance</CardTitle>
+                      <CardDescription>
+                        Capital, Treasury and Issuing on this account. These figures are at
+                        platform scale, unlike the sampled payment figures above — one row per
+                        organizer is not something you sample, so these are sized against the
+                        organizer&apos;s real volume rather than the 1:100 charge rows.
+                      </CardDescription>
+                    </div>
+                    <Badge tone="neutral">Platform scale</Badge>
+                  </CardHeader>
+                  <CardBody>
+                    <dl className="grid gap-x-8 gap-y-3 text-[13px] sm:grid-cols-2">
+                      {finance.capital.state === 'offered' && (
+                        <>
+                          <Row
+                            label="Financing offered"
+                            value={money(finance.capital.amount)}
+                          />
+                          <Row
+                            label="Offer surfaced"
+                            value={
+                              finance.capital.surfaced
+                                ? 'Yes'
+                                : 'No — the organizer has never seen it'
+                            }
+                            tone={finance.capital.surfaced ? 'neutral' : 'warn'}
+                          />
+                          <Row
+                            label="Offer lapses"
+                            value={`${longDate(finance.capital.expiresAfter)} (${untilLabel(finance.capital.expiresAfter, NOW)})`}
+                          />
+                        </>
+                      )}
+                      {finance.capital.state === 'drawn' && (
+                        <>
+                          <Row label="Advance drawn" value={money(finance.capital.advanced)} />
+                          <Row
+                            label="Still outstanding"
+                            value={money(finance.capital.remaining)}
+                            tone="warn"
+                          />
+                        </>
+                      )}
+                      {finance.capital.state === 'lapsed' && (
+                        <Row
+                          label="Financing"
+                          value={`A ${money(finance.capital.amount)} offer lapsed unused`}
+                          tone="warn"
+                        />
+                      )}
+                      {finance.capital.state === 'none' && (
+                        <Row label="Financing" value="No offer written" />
+                      )}
+                      {finance.treasuryCash != null ? (
+                        <>
+                          <Row label="Stored balance" value={money(finance.treasuryCash)} />
+                          <Row
+                            label="Committed to payments in flight"
+                            value={money(finance.treasuryCommitted)}
+                          />
+                          <Row
+                            label="Spendable"
+                            value={money(finance.treasuryCash - finance.treasuryCommitted)}
+                          />
+                        </>
+                      ) : (
+                        <Row label="Stored balance" value="None open" />
+                      )}
+                      <Row
+                        label="Issued cards"
+                        value={
+                          finance.cards > 0
+                            ? `${finance.cards} active · ${money(finance.cardLimit)} combined monthly ceiling`
+                            : 'None'
+                        }
+                      />
+                    </dl>
+                  </CardBody>
+                </Card>
+              )}
 
               {ledger.length > 0 && (
                 <Card className="lg:col-span-2">

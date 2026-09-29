@@ -38,6 +38,12 @@ export function requestId(): string {
   return `req_${rng.string(16)}`;
 }
 
+/** Digits only — card last4, and anything else that must not contain letters. */
+export function nextDigits(length: number): string {
+  counter += 1;
+  return rng.string(length, '0123456789');
+}
+
 export function callCount(): number {
   return counter;
 }

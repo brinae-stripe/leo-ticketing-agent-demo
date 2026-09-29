@@ -102,7 +102,7 @@ export interface ScenarioContext {
   sql: (sql: string) => Promise<QueryResult>;
   /** Set for organizer scenarios — the single connected account in scope. */
   accountId?: string;
-  /** The raw question, so a scenario can pick a organizer name out of it. */
+  /** The raw question, so a scenario can pick an organizer name out of it. */
   query: string;
 }
 

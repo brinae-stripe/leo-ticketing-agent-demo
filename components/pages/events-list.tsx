@@ -192,7 +192,11 @@ function EventsTable() {
                   <td className="px-4 py-2.5">
                     <div className="flex flex-wrap gap-1">
                       <StatusBadge status={row.status} startsAt={row.startsAt} />
-                      {row.disputes > 0 && <Badge tone="warn">{row.disputes} disputes</Badge>}
+                      {row.disputes > 0 && (
+                        <Badge tone="warn">
+                          {row.disputes} {row.disputes === 1 ? 'dispute' : 'disputes'}
+                        </Badge>
+                      )}
                       {row.refunded > 0 && (
                         <Badge tone="neutral">{money(row.refunded)} refunded</Badge>
                       )}

@@ -1,12 +1,28 @@
-# Marquee LEO
+# Marquee · LEO
 
-A fully simulated demo of an internal *ask an agent* experience for **Marquee**, a
-fictional live-events ticketing platform running on Stripe Connect.
+A fully simulated demo of **LEO** (the Live Event Optimizer), the AI agent inside
+**Marquee** — a fictional live-events ticketing platform running on Stripe Connect.
 
-A staff member asks a question in plain English. The agent answers from simulated Stripe
-Data Pipeline tables, shows the SQL it ran, proposes a resolution, and offers buttons that
-execute simulated Stripe MCP and REST calls — each behind an explicit human approval. There
-is also an organizer-facing copilot, scoped to a single connected account.
+Somebody asks a question in plain English. LEO answers from simulated Stripe Data Pipeline
+tables, shows the SQL it ran, proposes a resolution, and offers buttons that execute
+simulated Stripe MCP and REST calls — each behind an explicit human approval.
+
+**One pipeline, two views.** That split is the point of the demo:
+
+| | Platform view (`/leo`) | Organizer view (`/organizers/[id]`) |
+| --- | --- | --- |
+| Who | Hana, Marquee finance and operations | Elena, one event organizer |
+| Scope | All 70 organizers | One connected account, by `account_id` |
+| Sees | Everything, including Marquee's own margin | Their own rows only |
+| Why it exists | An internal tool that makes the ops team smaller than the volume needs | The version Marquee can package and sell |
+
+The difference between them is one clause in a `WHERE`. Building the agent once for internal
+operations means the organizer-facing version is not a second project — which is what makes
+it a product rather than a cost centre.
+
+Both names live in [`lib/brand.ts`](lib/brand.ts), so renaming the platform or the agent is
+a one-line edit. `npm run check:names` fails the build if a reserved name appears anywhere,
+so check that guard before picking a replacement.
 
 ---
 
@@ -22,7 +38,7 @@ To be specific about what that means:
 - Every "API call" resolves in-process after a 400–900 ms delay, returns a realistically
   shaped object, appends an audit entry, and mutates local state so the rest of the app
   reflects the change.
-- The agent is **not** a language model. It matches your question against a catalogue of 13
+- LEO is **not** a language model here. It matches your question against a catalogue of 19
   scenarios — exact phrases first, then keyword scoring with a floor — and falls through to
   "here is what I can do" rather than guessing. The typing effect is cosmetic.
 - The data is generated from a fixed seed, so every run of the demo is identical. "Now" is
@@ -60,14 +76,20 @@ both Turbopack and webpack in [`next.config.mjs`](next.config.mjs), so `next bui
 
 ## The pages
 
-| Route            | What is there                                                                                                   |
-| ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `/`              | KPI tiles, 13-week trend charts, top organizers by volume, and the entry point to the agent                          |
-| `/leo`           | The internal operations agent                                                                                   |
-| `/organizers`         | All 70 connected accounts, filterable by category and state                                                     |
-| `/organizers/[id]`    | One organizer: requirements, payouts, method mix, conversion by cohort, disputes, readers — plus the organizer copilot |
-| `/audit`         | Every simulated call this session made, with request and response                                               |
-| `/how-it-works`  | Architecture, the MCP-versus-API split, the Dashboard-only list, and the schema caveats                          |
+The nav is split in two: `Dashboard · Events · Organizers · LEO` is the platform's own admin
+and mirrors the tab structure an event back office actually uses. `Audit · How it works` is
+about the demo itself, and sits behind a rule so it does not read as product surface.
+
+| Route              | What is there |
+| ------------------ | ------------- |
+| `/`                | KPI tiles, 13-week trend charts, top organizers by volume, and the entry point to LEO |
+| `/events`          | All 324 events, split on-sale from past — the two get read for opposite reasons |
+| `/events/[id]`     | Event overview: daily activity curve, issued inventory per price level, derived stats |
+| `/organizers`      | All 70 connected accounts, filterable by category, state, and which finance products they have |
+| `/organizers/[id]` | One organizer: requirements, payouts, method mix, disputes, readers, embedded finance — plus the organizer view of LEO |
+| `/leo`             | The platform view of LEO |
+| `/audit`           | Every simulated call this session made, with request and response |
+| `/how-it-works`    | The flow, the two views, the MCP-versus-API split, the Dashboard-only list, and the schema caveats |
 
 ---
 
@@ -126,8 +148,9 @@ it — method, path, headers including `Stripe-Account` and `Idempotency-Key`, a
 body — and requires an approver name, which is recorded in the audit log.
 
 Set `requiresSecondAck: true` for a second checkbox. The project applies it to **aggregate
-refunds over $10,000** and to **every account debit**, regardless of size, since a debit
-moves money out of a organizer's balance in the opposite direction from a payout.
+refunds over $10,000**, to **every account debit** regardless of size (a debit moves money
+out of an organizer's balance in the opposite direction from a payout), and to **any Treasury
+outbound payment**, because money going to a third party cannot be pulled back with a click.
 
 Long-running work sets `batch`, which drives a progress bar. Small batches make one real
 call per item (17 refunds, 17 audit entries). Large ones chunk — the cancellation covers
@@ -138,7 +161,8 @@ call per item (17 refunds, 17 audit entries). Large ones chunk — the cancellat
 
 ## Scenarios
 
-**Internal operations** (`/leo`)
+**Platform view** (`/leo`) — payments first, then the three that only become askable once
+payment data and the platform's own event data are in the same warehouse.
 
 | Scenario | Question |
 | --- | --- |
@@ -151,8 +175,11 @@ call per item (17 refunds, 17 audit entries). Large ones chunk — the cancellat
 | Checkout optimizer | Which organizers' buyers would benefit from Apple Pay or pay-over-time? |
 | Event cancellation | Riverlight Music Festival is cancelled — refund everyone |
 | Terminal readiness | Are all readers at Cascade Aquarium online for tomorrow? |
+| Capital eligibility | Which organizers could be offered financing? |
+| Treasury float | How much are we holding before events, and for how long? |
+| Issuing vendor spend | Which organizers are paying vendors by bank transfer instead of card? |
 
-**Organizer copilot** (`/organizers/[id]` → Organizer copilot)
+**Organizer view** (`/organizers/[id]` → Organizer copilot)
 
 | Scenario | Question |
 | --- | --- |
@@ -160,6 +187,15 @@ call per item (17 refunds, 17 audit entries). Large ones chunk — the cancellat
 | Repeat buyers | How many of my buyers are repeat customers vs last year? |
 | VIP pay-over-time | Should I offer pay-over-time on my $300 VIP tier? |
 | Invoice a sponsor | Invoice my sponsor |
+| Capital advance | Can I get an advance to cover my venue deposit? |
+| Treasury pay vendor | Can I pay my staging vendor out of my balance? |
+| Issuing team card | Give my production lead a card with a monthly limit |
+
+Treasury and Issuing are on a handful of organizers by design, and a Capital offer only
+exists where Stripe wrote one — so the organizer scenarios all have a "you do not have this,
+and here is why" branch, which is the one you will hit on a random organizer. Filter
+`/organizers` by **Has a stored balance**, **Has issued cards** or **Has a financing offer**
+to land on an account where the other branch runs.
 
 ---
 
@@ -175,13 +211,26 @@ surface an agent can be pointed at safely; **direct API** calls are code you wri
 **Direct API** — `POST /v1/disputes/:id/close` · `POST /v1/reviews/:id/approve` ·
 `POST /v1/radar/value_list_items` · `POST /v1/transfers` (account debit) ·
 `POST /v1/transfers/:id/reversals` · `POST /v1/accounts/:id` · `POST /v1/account_links` ·
-`POST /v1/payouts` · `POST /v1/payment_method_configurations/:id` ·
+`POST /v1/account_sessions` · `POST /v1/payouts` ·
+`POST /v1/payment_method_configurations/:id` ·
+`POST /v1/capital/financing_offers/:id/mark_delivered` ·
+`POST /v1/treasury/financial_accounts` · `POST /v1/treasury/outbound_payments` ·
+`POST /v1/issuing/cardholders` · `POST /v1/issuing/cards` ·
 `POST /v1/reporting/report_runs` · `POST /v1/sigma/query_runs` ·
 `POST /v1/terminal/readers/:id/refund_payment`
 
-**Dashboard-only** — six real capabilities with no API surface: Radar rule edits, network
-token enrolment, Card Account Updater, Adaptive Acceptance, Smart Disputes, Instant Bank
-Payments. Scenarios that recommend one render a chip explaining why and who should own it.
+Worth stating plainly: **the hosted MCP surface covers none of Capital, Treasury or
+Issuing.** All three are direct REST — code a platform writes, owns and secures itself. See
+[`lib/stripe-sim/embedded-finance.ts`](lib/stripe-sim/embedded-finance.ts).
+
+**Dashboard-only** — eight real capabilities with no API surface to turn them on: Radar rule
+edits, network token enrolment, Card Account Updater, Adaptive Acceptance, Smart Disputes,
+Instant Bank Payments, Treasury enablement, and accepting a Capital offer. The last one is
+the most instructive: the organizer takes on the liability, so the organizer agrees to the
+terms in a Stripe-hosted surface the platform can embed but cannot complete. There is no
+endpoint that accepts an offer on someone else's behalf, by design — so the demo opens the
+flow and stops, rather than faking a tidier ending. Scenarios that recommend any of these
+render a chip explaining why and who owns it.
 See [`lib/stripe-sim/dashboard-only.ts`](lib/stripe-sim/dashboard-only.ts).
 
 ---
@@ -203,11 +252,21 @@ Link share of transactions · 10% card-present · under 1% of volume on pay-over
 dispute rate · 12% non-US cards converting ~5 pts worse · ~0.5% outdated-card-details
 declines · debit ~2 pts below credit.
 
-Three deliberate departures from Sigma, all because a browser SQL engine has no JSON
-operators or array aggregates — `metadata.event_id` becomes `metadata_event_id`, array
-columns become a joined string plus a `_count`, and every organizer is US-based settling in USD
-so the international signal lives in `card_country`. All four are listed on
-`/how-it-works`.
+**Embedded finance is not sampled.** `charges` is a 1:100 sample. The Capital, Treasury and
+Issuing tables are not, because there is nothing to sample — a financing offer is one row per
+organizer, not one per payment, and a platform with 70 organizers has at most 70 offers. So
+their amounts are sized off the organizer's *real* volume (`trailingVolume * SCALE_FACTOR`)
+rather than off the sampled rows, and a $600,000 offer sits next to an organizer whose charge
+rows only add up to $40,000. Scenarios that mix the two scale the sampled side in the SQL,
+where you can see it happening. The organizer page keeps the two apart and labels the
+embedded-finance card "Platform scale" for the same reason.
+See [`lib/sim/embedded-finance.ts`](lib/sim/embedded-finance.ts).
+
+Deliberate departures from Sigma, mostly because a browser SQL engine has no JSON operators
+or array aggregates — `metadata.event_id` becomes `metadata_event_id`, array columns become a
+joined string plus a `_count`, and every organizer is US-based settling in USD so the
+international signal lives in `card_country`. All five caveats, including the sampling note
+above, are listed on `/how-it-works` rather than buried here.
 
 ---
 
@@ -222,7 +281,7 @@ npx tsc -p tsconfig.verify.json
 # Does the generated data hit its targets?
 node .tmp-verify/scripts/verify-dataset.js
 
-# Do all 13 scenarios run, and does the matcher route correctly?
+# Do all 19 scenarios run, and does the matcher route correctly?
 node .tmp-verify/scripts/verify-scenarios.js
 
 # …and execute their primary actions against the dataset
@@ -256,9 +315,9 @@ utilities are in [`app/globals.css`](app/globals.css).
 ## Deploying
 
 ```bash
-# If gh has more than one organizer configured, pin it — otherwise it will try the
+# If gh has more than one GitHub host configured, pin it — otherwise it will try
 # first one and fail on its credentials.
-GH_HOST=github.com gh repo create marquee-ask-demo --private --source=. --remote=origin --push
+GH_HOST=github.com gh repo create marquee-leo-demo --private --source=. --remote=origin --push
 
 vercel login            # required once
 vercel --yes --prod     # framework auto-detected as Next.js
@@ -281,10 +340,13 @@ components/
   pages/                 one component per route
   ui/                    buttons, cards, tables, sheet, code blocks
 lib/
+  brand.ts               the platform name, the agent name, and the two view definitions
   scenarios/             internal/ and organizer/, plus the registry and matcher
   sim/                   generator, types, metrics, formatting, seeded RNG
+    embedded-finance.ts  Capital, Treasury and Issuing, generated on top of payments
   sql/                   alasql engine, flattening, table documentation
   store/                 zustand store and mutation replay
   stripe-sim/            the simulated MCP and REST surfaces, audit, dashboard-only
+    embedded-finance.ts  the Capital, Treasury and Issuing calls — all direct REST
 scripts/                 check-names guard and the two verification harnesses
 ```

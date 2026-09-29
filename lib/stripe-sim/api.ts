@@ -22,7 +22,7 @@ import type { SimContext } from './types';
  * Each function is named after its endpoint and takes the same parameters the
  * real API takes. Where a call has to run in a connected account's context, the
  * `Stripe-Account` header is set explicitly and shown in the preview, because
- * getting that wrong is the difference between debiting a organizer and debiting
+ * getting that wrong is the difference between debiting an organizer and debiting
  * yourself.
  */
 

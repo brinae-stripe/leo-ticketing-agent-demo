@@ -8,11 +8,30 @@ import { SimGate } from '@/components/layout/sim-gate';
 import { Badge, Card, Input, Select, Skeleton } from '@/components/ui/primitives';
 import { CATEGORY_PROFILES } from '@/lib/sim/catalog';
 import { isoToShortDate, money, percent } from '@/lib/sim/format';
-import { topOrganizersByVolume } from '@/lib/sim/metrics';
+import { embeddedFinanceStatus, topOrganizersByVolume } from '@/lib/sim/metrics';
 import type { OrganizerCategory } from '@/lib/sim/types';
 import { useSim } from '@/lib/store/sim-store';
 
-type StatusFilter = 'all' | 'payouts_blocked' | 'charges_disabled' | 'negative_balance' | 'healthy';
+type StatusFilter =
+  | 'all'
+  | 'payouts_blocked'
+  | 'charges_disabled'
+  | 'negative_balance'
+  | 'healthy'
+  | 'capital_offer'
+  | 'stored_balance'
+  | 'has_cards';
+
+const STATUS_LABELS: Record<StatusFilter, string> = {
+  all: 'Any status',
+  payouts_blocked: 'Payouts blocked',
+  charges_disabled: 'Charges disabled',
+  negative_balance: 'Negative balance',
+  healthy: 'Healthy',
+  capital_offer: 'Has a financing offer',
+  stored_balance: 'Has a stored balance',
+  has_cards: 'Has issued cards',
+};
 
 export function OrganizersList() {
   return (
@@ -75,6 +94,7 @@ function OrganizersTable() {
           disputes: volume?.disputes ?? 0,
           available: balance?.available ?? 0,
           readers: (index.readersByAccount.get(account.id) ?? []).length,
+          finance: embeddedFinanceStatus(data, account.id),
         };
       })
       .filter((row) => {
@@ -91,10 +111,13 @@ function OrganizersTable() {
         ) {
           return false;
         }
+        if (status === 'capital_offer' && row.finance.capital.state === 'none') return false;
+        if (status === 'stored_balance' && row.finance.treasuryCash == null) return false;
+        if (status === 'has_cards' && row.finance.cards === 0) return false;
         return true;
       })
       .sort((a, b) => b.volume - a.volume);
-  }, [balances, category, data.accounts, index.readersByAccount, query, status, volumes]);
+  }, [balances, category, data, index.readersByAccount, query, status, volumes]);
 
   const categories = Object.keys(CATEGORY_PROFILES) as OrganizerCategory[];
 
@@ -128,11 +151,11 @@ function OrganizersTable() {
           onChange={(event) => setStatus(event.target.value as StatusFilter)}
           aria-label="Filter by status"
         >
-          <option value="all">Any status</option>
-          <option value="payouts_blocked">Payouts blocked</option>
-          <option value="charges_disabled">Charges disabled</option>
-          <option value="negative_balance">Negative balance</option>
-          <option value="healthy">Healthy</option>
+          {(Object.keys(STATUS_LABELS) as StatusFilter[]).map((key) => (
+            <option key={key} value={key}>
+              {STATUS_LABELS[key]}
+            </option>
+          ))}
         </Select>
         <span className="nums ml-auto text-[12.5px] text-gray-500">
           {rows.length} of {data.accounts.length}
@@ -194,8 +217,28 @@ function OrganizersTable() {
                       {!row.account.payouts_enabled && <Badge tone="danger">No payouts</Badge>}
                       {!row.account.charges_enabled && <Badge tone="danger">No charges</Badge>}
                       {row.available < 0 && <Badge tone="warn">Negative</Badge>}
-                      {row.disputes > 0 && <Badge tone="warn">{row.disputes} disputes</Badge>}
-                      {row.readers > 0 && <Badge tone="neutral">{row.readers} readers</Badge>}
+                      {row.disputes > 0 && (
+                        <Badge tone="warn">
+                          {row.disputes} {row.disputes === 1 ? 'dispute' : 'disputes'}
+                        </Badge>
+                      )}
+                      {row.readers > 0 && (
+                        <Badge tone="neutral">
+                          {row.readers} {row.readers === 1 ? 'reader' : 'readers'}
+                        </Badge>
+                      )}
+                      {row.finance.capital.state === 'offered' && (
+                        <Badge tone="blue">Financing offer</Badge>
+                      )}
+                      {row.finance.capital.state === 'drawn' && <Badge tone="blue">Advance</Badge>}
+                      {row.finance.treasuryCash != null && (
+                        <Badge tone="purple">Stored balance</Badge>
+                      )}
+                      {row.finance.cards > 0 && (
+                        <Badge tone="purple">
+                          {row.finance.cards} {row.finance.cards === 1 ? 'card' : 'cards'}
+                        </Badge>
+                      )}
                       {row.account.payouts_enabled &&
                         row.account.charges_enabled &&
                         row.available >= 0 &&

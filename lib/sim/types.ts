@@ -29,7 +29,7 @@ export type OrganizerCategory =
 export type AccountType = 'express' | 'custom';
 
 /**
- * How Marquee collects its service fee from a organizer.
+ * How Marquee collects its service fee from an organizer.
  * - `on_charge`  — application_fee_amount is taken at charge time.
  * - `post_event` — Marquee invoices or debits the organizer after the event.
  * The settlement scenario exists because of the second group.
@@ -300,6 +300,13 @@ export interface SimDataset {
   report_runs: SimReportRun[];
   query_runs: SimQueryRun[];
   payment_method_configurations: PaymentMethodConfiguration[];
+  capital_financing_offers: CapitalFinancingOffer[];
+  capital_financing_summaries: CapitalFinancingSummary[];
+  treasury_financial_accounts: TreasuryFinancialAccount[];
+  treasury_outbound_payments: TreasuryOutboundPayment[];
+  issuing_cardholders: IssuingCardholder[];
+  issuing_cards: IssuingCard[];
+  issuing_authorizations: IssuingAuthorization[];
   /**
    * Organizer-raised asks that need a human at Marquee to look at them.
    * Enabling a pay-over-time method is a commercial decision as well as a
@@ -373,6 +380,137 @@ export interface SimQueryRun {
   status: 'pending' | 'completed' | 'failed';
   created: number;
   row_count: number;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Embedded finance                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Capital, Treasury and Issuing on connected accounts.
+ *
+ * Shaped after the live APIs rather than after Sigma. Two reasons: warehouse
+ * coverage of these products is thinner than it is for payments, and the
+ * interesting decisions here are made against current state — an offer that
+ * expires on Friday, a balance you are about to spend — which is exactly the
+ * kind of question a warehouse on a delivery schedule answers badly.
+ */
+
+export type FinancingOfferStatus =
+  | 'undelivered'
+  | 'delivered'
+  | 'accepted'
+  | 'paid_out'
+  | 'expired'
+  | 'canceled';
+
+export interface CapitalFinancingOffer {
+  id: string;
+  account_id: string;
+  status: FinancingOfferStatus;
+  /** Maximum the organizer can draw. */
+  offered_amount: number;
+  /** Flat fee on the full draw. Capital does not compound interest. */
+  fee_amount: number;
+  /** Share of each future payment withheld to repay, as a decimal string. */
+  withhold_rate: string;
+  currency: string;
+  created: number;
+  expires_after: number;
+  /**
+   * When the platform surfaced the offer to the organizer. Stripe requires this
+   * to be recorded — an undelivered offer is one the organizer has never seen,
+   * which is a different problem from one they declined.
+   */
+  delivered_at: number | null;
+  accepted_at: number | null;
+}
+
+/** One row per drawn advance, mirroring /v1/capital/financing_summary. */
+export interface CapitalFinancingSummary {
+  offer_id: string;
+  account_id: string;
+  advance_amount: number;
+  fee_amount: number;
+  withhold_rate: string;
+  /** Advance plus fee, less everything withheld so far. */
+  remaining_amount: number;
+  paid_out_at: number;
+  currency: string;
+}
+
+export interface TreasuryFinancialAccount {
+  id: string;
+  account_id: string;
+  status: 'open' | 'closed';
+  active_features: string[];
+  balance_cash: number;
+  balance_inbound_pending: number;
+  balance_outbound_pending: number;
+  currency: string;
+  created: number;
+}
+
+export interface TreasuryOutboundPayment {
+  id: string;
+  financial_account_id: string;
+  account_id: string;
+  amount: number;
+  currency: string;
+  status: 'processing' | 'posted' | 'returned' | 'canceled' | 'failed';
+  payee_name: string;
+  description: string;
+  expected_arrival_date: number;
+  created: number;
+}
+
+export interface IssuingCardholder {
+  id: string;
+  account_id: string;
+  name: string;
+  email: string;
+  role: string;
+  type: 'individual' | 'company';
+  status: 'active' | 'inactive' | 'blocked';
+  created: number;
+}
+
+export type SpendingLimitInterval =
+  | 'per_authorization'
+  | 'daily'
+  | 'weekly'
+  | 'monthly'
+  | 'yearly'
+  | 'all_time';
+
+export interface IssuingCard {
+  id: string;
+  cardholder_id: string;
+  account_id: string;
+  last4: string;
+  brand: string;
+  type: 'virtual' | 'physical';
+  status: 'active' | 'inactive' | 'canceled';
+  spending_limit_amount: number | null;
+  spending_limit_interval: SpendingLimitInterval | null;
+  /** Merchant categories the card is restricted to, if any. */
+  allowed_categories: string[];
+  created: number;
+}
+
+export interface IssuingAuthorization {
+  id: string;
+  card_id: string;
+  account_id: string;
+  amount: number;
+  currency: string;
+  approved: boolean;
+  status: 'pending' | 'closed' | 'reversed';
+  /** Set only when `approved` is false. */
+  decline_reason: string | null;
+  merchant_name: string;
+  merchant_category: string;
+  created: number;
 }
 
 export interface PaymentMethodConfiguration {

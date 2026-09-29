@@ -1,19 +1,32 @@
+import { capitalEligibility } from './internal/capital-eligibility';
 import { checkoutOptimizer } from './internal/checkout-optimizer';
 import { disputesDue } from './internal/disputes-due';
 import { eventCancellation } from './internal/event-cancellation';
 import { feeExplainer } from './internal/fee-explainer';
+import { issuingVendorSpend } from './internal/issuing-vendor-spend';
 import { payoutHealth } from './internal/payout-health';
 import { refundableEfws } from './internal/refundable-efws';
 import { reviewQueue } from './internal/review-queue';
 import { settlement } from './internal/settlement';
 import { terminalReadiness } from './internal/terminal-readiness';
+import { treasuryFloat } from './internal/treasury-float';
+import { capitalAdvance } from './organizer/capital-advance';
 import { invoiceSponsor } from './organizer/invoice-sponsor';
+import { issuingTeamCard } from './organizer/issuing-team-card';
 import { moneyFromSaturday } from './organizer/money-from-saturday';
 import { repeatBuyers } from './organizer/repeat-buyers';
+import { treasuryPayVendor } from './organizer/treasury-pay-vendor';
 import { vipPayOverTime } from './organizer/vip-pay-over-time';
 import type { Scenario } from './types';
 
-/** Internal ops scenarios, in the order they appear on /ask. */
+/**
+ * Platform-view scenarios, in the order they appear on /leo.
+ *
+ * Payments questions first, because those are the ones somebody has today. The
+ * embedded-finance three sit at the end as a block — they are questions a
+ * platform can only ask once its payment data and its own event data are in the
+ * same place, which is the argument for putting them there.
+ */
 export const INTERNAL_SCENARIOS: Scenario[] = [
   feeExplainer,
   disputesDue,
@@ -24,14 +37,20 @@ export const INTERNAL_SCENARIOS: Scenario[] = [
   checkoutOptimizer,
   eventCancellation,
   terminalReadiness,
+  capitalEligibility,
+  treasuryFloat,
+  issuingVendorSpend,
 ];
 
-/** Organizer copilot scenarios, always scoped to one connected account. */
+/** Organizer-view scenarios, always scoped to one connected account. */
 export const ORGANIZER_SCENARIOS: Scenario[] = [
   moneyFromSaturday,
   repeatBuyers,
   vipPayOverTime,
   invoiceSponsor,
+  capitalAdvance,
+  treasuryPayVendor,
+  issuingTeamCard,
 ];
 
 export const ALL_SCENARIOS: Scenario[] = [...INTERNAL_SCENARIOS, ...ORGANIZER_SCENARIOS];
