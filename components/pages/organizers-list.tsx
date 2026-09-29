@@ -184,7 +184,7 @@ function OrganizersTable() {
                 >
                   <td className="px-4 py-2.5">
                     <Link
-                      href={`/organizers/${row.account.id}`}
+                      href={`/o/${row.account.id}`}
                       className="font-semibold text-gray-900 hover:text-blue-600 hover:underline"
                     >
                       {row.account.business_profile_name}

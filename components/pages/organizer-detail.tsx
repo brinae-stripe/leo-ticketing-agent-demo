@@ -1,11 +1,8 @@
 'use client';
 
-import { ArrowLeft, Bot } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
 
-import { AskChat } from '@/components/ask/chat';
-import { StadiumLights } from '@/components/brand/wordmark';
 import { SimGate } from '@/components/layout/sim-gate';
 import { DataTable } from '@/components/ui/data-table';
 import {
@@ -16,9 +13,10 @@ import {
   CardHeader,
   CardTitle,
   EmptyState,
-  Tabs,
 } from '@/components/ui/primitives';
-import { ORGANIZER_SCENARIOS } from '@/lib/scenarios';
+import { PlatformScaleNote, ProductTile } from '@/components/money/money-ui';
+import { PLATFORM } from '@/lib/brand';
+import { organizerBase } from '@/lib/nav';
 import { CATEGORY_PROFILES } from '@/lib/sim/catalog';
 import { NOW } from '@/lib/sim/constants';
 import { dateTime, humanize, isoToShortDate, longDate, money, percent, untilLabel } from '@/lib/sim/format';
@@ -26,7 +24,23 @@ import { embeddedFinanceStatus, organizerSummary } from '@/lib/sim/metrics';
 import { useSim } from '@/lib/store/sim-store';
 import { cn } from '@/lib/utils';
 
-export function OrganizerDetail({ accountId }: { accountId: string }) {
+/**
+ * One organizer, split by section rather than tabbed.
+ *
+ * The sections are sidebar destinations now, so each is its own URL — which
+ * means a link can point at an organizer's payment mix rather than at their
+ * account and a note saying "click the third tab". The identity header lives in
+ * the shell's context bar, so it is not repeated here.
+ */
+export type OrganizerSection = 'dashboard' | 'payments' | 'account';
+
+export function OrganizerDetail({
+  accountId,
+  section,
+}: {
+  accountId: string;
+  section: OrganizerSection;
+}) {
   return (
     <SimGate
       fallback={
@@ -35,23 +49,34 @@ export function OrganizerDetail({ accountId }: { accountId: string }) {
         </div>
       }
     >
-      <OrganizerDetailBody accountId={accountId} />
+      <OrganizerDetailBody accountId={accountId} section={section} />
     </SimGate>
   );
 }
 
-const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'requirements', label: 'Requirements & payouts' },
-  { id: 'payments', label: 'Payments mix' },
-  { id: 'disputes', label: 'Disputes' },
-  { id: 'readers', label: 'Readers' },
-  { id: 'copilot', label: 'Organizer copilot' },
-];
+const SECTION_HEADINGS: Record<OrganizerSection, { title: string; blurb: string }> = {
+  dashboard: {
+    title: 'Dashboard',
+    blurb: 'Ticket sales, commercials and money products for this organizer.',
+  },
+  payments: {
+    title: 'Payments',
+    blurb: 'How buyers pay, what gets disputed, and which readers are online.',
+  },
+  account: {
+    title: 'Account settings',
+    blurb: 'Verification requirements and payout configuration.',
+  },
+};
 
-function OrganizerDetailBody({ accountId }: { accountId: string }) {
+function OrganizerDetailBody({
+  accountId,
+  section,
+}: {
+  accountId: string;
+  section: OrganizerSection;
+}) {
   const { data, index } = useSim();
-  const [tab, setTab] = React.useState('overview');
 
   const account = index.accountById.get(accountId);
 
@@ -73,7 +98,7 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
           description="That account id is not in the seeded dataset. It may have been from an older demo session — reset the demo data or pick an organizer from the list."
         />
         <div className="mt-4">
-          <Link href="/organizers" className="text-[13px] font-medium text-blue-600 hover:underline">
+          <Link href="/platform/organizers" className="text-[13px] font-medium text-blue-600 hover:underline">
             Back to all organizers
           </Link>
         </div>
@@ -95,89 +120,57 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
   const ledger = data.service_fee_ledger.filter((row) => row.account_id === accountId);
   const config = index.pmcByAccount.get(accountId);
 
+  const heading = SECTION_HEADINGS[section];
+
   return (
     <>
-      <section className="relative overflow-hidden bg-ink text-white">
-        <StadiumLights />
-        <div className="relative mx-auto max-w-[84rem] px-4 py-8 sm:px-6">
-          <Link
-            href="/organizers"
-            className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-white/60 transition-colors hover:text-white"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            All organizers
-          </Link>
-          <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-            <div className="min-w-0">
-              <h1 className="font-display text-[28px] font-black leading-tight sm:text-[34px]">
-                {account.business_profile_name}
-              </h1>
-              <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-white/60">
-                <span>{profile.label}</span>
-                <span aria-hidden>·</span>
-                <span className="font-mono">{account.id}</span>
-                <span aria-hidden>·</span>
-                <span className="capitalize">{account.type} account</span>
-                {account.metadata.next_event_date && (
-                  <>
-                    <span aria-hidden>·</span>
-                    <span>Next event {isoToShortDate(account.metadata.next_event_date)}</span>
-                  </>
-                )}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {!account.payouts_enabled && <Badge tone="danger">Payouts disabled</Badge>}
-              {!account.charges_enabled && <Badge tone="danger">Charges disabled</Badge>}
-              {summary.available < 0 && <Badge tone="warn">Negative balance</Badge>}
-              <Badge tone="ink">{humanize(account.metadata.settlement_mode)} billing</Badge>
-              {/* Deliberately no amounts here. These rows are at platform scale
-                  and the stat tiles below are at sample scale, so putting the
-                  two next to each other would read as a contradiction. The
-                  figures live in the embedded-finance card, labelled. */}
-              {finance.capital.state === 'offered' && (
-                <Badge tone={finance.capital.surfaced ? 'blue' : 'warn'}>
-                  Financing offer{finance.capital.surfaced ? '' : ' · not surfaced'}
-                </Badge>
-              )}
-              {finance.capital.state === 'drawn' && <Badge tone="blue">Advance outstanding</Badge>}
-              {finance.treasuryCash != null && <Badge tone="purple">Stored balance</Badge>}
-              {finance.cards > 0 && (
-                <Badge tone="purple">
-                  {finance.cards} {finance.cards === 1 ? 'card' : 'cards'}
-                </Badge>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
       <div className="mx-auto max-w-[84rem] px-4 py-6 sm:px-6">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Net volume" value={money(summary.netVolume)} />
-          <Stat
-            label="Success rate"
-            value={summary.attempts > 0 ? percent(summary.successRate, 1) : '—'}
-            hint={`${summary.succeeded.toLocaleString('en-US')} of ${summary.attempts.toLocaleString('en-US')} attempts`}
-          />
-          <Stat
-            label="Available balance"
-            value={money(summary.available)}
-            hint={`${money(summary.pending)} pending`}
-            tone={summary.available < 0 ? 'danger' : 'neutral'}
-          />
-          <Stat
-            label="Open disputes"
-            value={String(summary.openDisputes)}
-            hint={`${summary.disputes} total this quarter`}
-            tone={summary.openDisputes > 0 ? 'warn' : 'neutral'}
-          />
-        </div>
+        <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="font-display text-[24px] font-black text-gray-900">
+              {heading.title}
+            </h1>
+            <p className="mt-1 text-[13.5px] text-gray-500">{heading.blurb}</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <Badge tone="neutral">{profile.label}</Badge>
+            {!account.payouts_enabled && <Badge tone="danger">Payouts disabled</Badge>}
+            {!account.charges_enabled && <Badge tone="danger">Charges disabled</Badge>}
+            {summary.available < 0 && <Badge tone="warn">Negative balance</Badge>}
+            <Badge tone="ink">{humanize(account.metadata.settlement_mode)} billing</Badge>
+            {account.metadata.next_event_date && (
+              <Badge tone="neutral">
+                Next event {isoToShortDate(account.metadata.next_event_date)}
+              </Badge>
+            )}
+          </div>
+        </header>
 
-        <Tabs tabs={TABS} active={tab} onChange={setTab} className="mt-6" />
+        {section === 'dashboard' && (
+          <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Net volume" value={money(summary.netVolume)} />
+            <Stat
+              label="Success rate"
+              value={summary.attempts > 0 ? percent(summary.successRate, 1) : '—'}
+              hint={`${summary.succeeded.toLocaleString('en-US')} of ${summary.attempts.toLocaleString('en-US')} attempts`}
+            />
+            <Stat
+              label="Available balance"
+              value={money(summary.available)}
+              hint={`${money(summary.pending)} pending`}
+              tone={summary.available < 0 ? 'danger' : 'neutral'}
+            />
+            <Stat
+              label="Open disputes"
+              value={String(summary.openDisputes)}
+              hint={`${summary.disputes} total this quarter`}
+              tone={summary.openDisputes > 0 ? 'warn' : 'neutral'}
+            />
+          </div>
+        )}
 
         <div className="py-6">
-          {tab === 'overview' && (
+          {section === 'dashboard' && (
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader>
@@ -235,90 +228,68 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
                 </CardBody>
               </Card>
 
-              {finance.any && (
-                <Card className="lg:col-span-2">
-                  <CardHeader>
-                    <div>
-                      <CardTitle>Embedded finance</CardTitle>
-                      <CardDescription>
-                        Capital, Treasury and Issuing on this account. These figures are at
-                        platform scale, unlike the sampled payment figures above — one row per
-                        organizer is not something you sample, so these are sized against the
-                        organizer&apos;s real volume rather than the 1:100 charge rows.
-                      </CardDescription>
-                    </div>
-                    <Badge tone="neutral">Platform scale</Badge>
-                  </CardHeader>
-                  <CardBody>
-                    <dl className="grid gap-x-8 gap-y-3 text-[13px] sm:grid-cols-2">
-                      {finance.capital.state === 'offered' && (
-                        <>
-                          <Row
-                            label="Financing offered"
-                            value={money(finance.capital.amount)}
-                          />
-                          <Row
-                            label="Offer surfaced"
-                            value={
-                              finance.capital.surfaced
-                                ? 'Yes'
-                                : 'No — the organizer has never seen it'
-                            }
-                            tone={finance.capital.surfaced ? 'neutral' : 'warn'}
-                          />
-                          <Row
-                            label="Offer lapses"
-                            value={`${longDate(finance.capital.expiresAfter)} (${untilLabel(finance.capital.expiresAfter, NOW)})`}
-                          />
-                        </>
-                      )}
-                      {finance.capital.state === 'drawn' && (
-                        <>
-                          <Row label="Advance drawn" value={money(finance.capital.advanced)} />
-                          <Row
-                            label="Still outstanding"
-                            value={money(finance.capital.remaining)}
-                            tone="warn"
-                          />
-                        </>
-                      )}
-                      {finance.capital.state === 'lapsed' && (
-                        <Row
-                          label="Financing"
-                          value={`A ${money(finance.capital.amount)} offer lapsed unused`}
-                          tone="warn"
-                        />
-                      )}
-                      {finance.capital.state === 'none' && (
-                        <Row label="Financing" value="No offer written" />
-                      )}
-                      {finance.treasuryCash != null ? (
-                        <>
-                          <Row label="Stored balance" value={money(finance.treasuryCash)} />
-                          <Row
-                            label="Committed to payments in flight"
-                            value={money(finance.treasuryCommitted)}
-                          />
-                          <Row
-                            label="Spendable"
-                            value={money(finance.treasuryCash - finance.treasuryCommitted)}
-                          />
-                        </>
-                      ) : (
-                        <Row label="Stored balance" value="None open" />
-                      )}
-                      <Row
-                        label="Issued cards"
-                        value={
-                          finance.cards > 0
-                            ? `${finance.cards} active · ${money(finance.cardLimit)} combined monthly ceiling`
-                            : 'None'
-                        }
-                      />
-                    </dl>
-                  </CardBody>
-                </Card>
-              )}
+              {/* Pointers, not a second copy of the money pages. The figures used
+                  to be inlined here, which meant two places to keep in step and a
+                  platform-scale amount sitting next to the sampled tiles above. */}
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <div>
+                    <CardTitle>{PLATFORM} Money</CardTitle>
+                    <CardDescription>
+                      What Capital, Treasury and Issuing are doing on this account.
+                    </CardDescription>
+                  </div>
+                </CardHeader>
+                <CardBody>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <ProductTile
+                      title="Event Account"
+                      state={finance.treasuryCash != null ? 'active' : 'available'}
+                      detail={
+                        finance.treasuryCash != null
+                          ? `${money(finance.treasuryCash)} held`
+                          : 'No stored balance open'
+                      }
+                      href={
+                        finance.treasuryCash != null
+                          ? `${organizerBase(accountId)}/money/account`
+                          : undefined
+                      }
+                    />
+                    <ProductTile
+                      title="Production Cards"
+                      state={finance.cards > 0 ? 'active' : 'available'}
+                      detail={
+                        finance.cards > 0
+                          ? `${finance.cards} active · ${money(finance.cardLimit)} ceiling`
+                          : 'No cards issued'
+                      }
+                      href={
+                        finance.cards > 0
+                          ? `${organizerBase(accountId)}/money/cards`
+                          : undefined
+                      }
+                    />
+                    <ProductTile
+                      title="Event Advance"
+                      state={
+                        finance.capital.state === 'drawn' || finance.capital.state === 'offered'
+                          ? 'active'
+                          : 'available'
+                      }
+                      detail={
+                        finance.capital.state === 'drawn'
+                          ? `${money(finance.capital.remaining)} outstanding`
+                          : finance.capital.state === 'offered'
+                            ? `${money(finance.capital.amount)} available`
+                            : 'No offer written'
+                      }
+                      href={`${organizerBase(accountId)}/money/advance`}
+                    />
+                  </div>
+                  <PlatformScaleNote className="mt-4" />
+                </CardBody>
+              </Card>
 
               {ledger.length > 0 && (
                 <Card className="lg:col-span-2">
@@ -346,7 +317,7 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
             </div>
           )}
 
-          {tab === 'requirements' && (
+          {section === 'account' && (
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader>
@@ -441,7 +412,7 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
             </div>
           )}
 
-          {tab === 'payments' && (
+          {section === 'payments' && (
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader>
@@ -526,7 +497,7 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
             </div>
           )}
 
-          {tab === 'disputes' && (
+          {section === 'payments' && (
             <Card>
               <CardHeader>
                 <div>
@@ -559,7 +530,7 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
             </Card>
           )}
 
-          {tab === 'readers' && (
+          {section === 'payments' && (
             <Card>
               <CardHeader>
                 <div>
@@ -606,37 +577,6 @@ function OrganizerDetailBody({ accountId }: { accountId: string }) {
             </Card>
           )}
 
-          {tab === 'copilot' && (
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
-              <div>
-                <div className="mb-4 flex items-start gap-3 rounded-lg border border-purple-100 bg-purple-50 px-4 py-3">
-                  <Bot className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-                  <p className="text-[12.5px] leading-relaxed text-gray-700">
-                    This is what {account.business_profile_name} sees when they open the
-                    copilot in their own dashboard. Everything is scoped to this connected
-                    account — the organizer cannot query other organizers, and the actions run in
-                    their account context.
-                  </p>
-                </div>
-                <AskChat scope="organizer" accountId={accountId} />
-              </div>
-              <aside className="space-y-2 lg:sticky lg:top-6 lg:self-start">
-                <p className="label-xs">Organizer scenarios</p>
-                {ORGANIZER_SCENARIOS.map((scenario) => (
-                  <Card key={scenario.id}>
-                    <CardBody className="px-3.5 py-2.5">
-                      <p className="text-[12.5px] font-semibold leading-snug text-gray-900">
-                        {scenario.suggestedPrompt}
-                      </p>
-                      <p className="mt-1 text-[11.5px] leading-relaxed text-gray-500">
-                        {scenario.blurb}
-                      </p>
-                    </CardBody>
-                  </Card>
-                ))}
-              </aside>
-            </div>
-          )}
         </div>
       </div>
     </>

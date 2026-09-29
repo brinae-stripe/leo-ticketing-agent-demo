@@ -44,6 +44,7 @@ export const TABLE_DOCS: TableDoc[] = [
   { name: 'capital_financing_summaries', source: 'embedded_finance_api', description: 'Drawn advances with the amount still outstanding after withholding.' },
   { name: 'treasury_financial_accounts', source: 'embedded_finance_api', description: 'Stored-balance accounts, with cash and pending inbound and outbound.' },
   { name: 'treasury_outbound_payments', source: 'embedded_finance_api', description: 'Vendor payments made out of a stored balance rather than a payout.' },
+  { name: 'treasury_received_credits', source: 'embedded_finance_api', description: 'Money arriving into a stored balance — weekly ticket-revenue sweeps.' },
   { name: 'issuing_cardholders', source: 'embedded_finance_api', description: 'People on an organizer\'s team who hold a card.' },
   { name: 'issuing_cards', source: 'embedded_finance_api', description: 'Issued cards with their spending limit and allowed merchant categories.' },
   { name: 'issuing_authorizations', source: 'embedded_finance_api', description: 'Card spend attempts, including the ones the card\'s own controls declined.' },

@@ -22,6 +22,17 @@ const config: Config = {
           soft: '#0B0B0C',
           muted: '#17181B',
         },
+        // Sidebar and money surfaces. Deep navy rather than the pure black used
+        // for hero bands — a full-height black rail next to white content is
+        // harsh, and the navy reads as chrome instead of as a hole in the page.
+        nav: {
+          DEFAULT: '#141A33',
+          raised: '#1B2242',
+          active: '#252E56',
+          border: '#242C4C',
+          label: '#7C8AB0',
+          item: '#B9C2DA',
+        },
         blue: {
           50: '#EEF3FF',
           100: '#DBE5FF',
@@ -75,6 +86,8 @@ const config: Config = {
           'radial-gradient(rgba(255,255,255,0.16) 1px, transparent 1px)',
         'stadium-dots-light':
           'radial-gradient(rgba(17,24,39,0.10) 1px, transparent 1px)',
+        // The balance hero on the money pages.
+        'money-hero': 'linear-gradient(135deg, #1D2755 0%, #141A33 62%, #10152A 100%)',
       },
       backgroundSize: {
         dots: '18px 18px',

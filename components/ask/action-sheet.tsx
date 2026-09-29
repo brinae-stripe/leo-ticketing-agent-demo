@@ -303,7 +303,7 @@ function SheetFooter({
     return (
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
         <Button variant="secondary" asChild>
-          <Link href="/audit">
+          <Link href="/platform/audit">
             <ScrollText className="h-4 w-4" />
             View in audit log
           </Link>

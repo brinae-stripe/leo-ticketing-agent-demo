@@ -54,6 +54,17 @@ export interface Account {
     settlement_mode: SettlementMode;
     service_fee_percent: string;
     service_fee_fixed: string;
+    /**
+     * Trailing 90-day net volume in cents, at platform scale and already
+     * corrected for the one event that is not sampled.
+     *
+     * Stored on the account so that every consumer — SQL, the money pages, the
+     * scenarios — reads the same number instead of each re-deriving it from the
+     * charge rows and having to remember the scale factor and the fixture
+     * exception. Getting that wrong once handed the largest financing offer on
+     * the platform to a test fixture.
+     */
+    trailing_volume: string;
   };
 }
 
@@ -304,6 +315,7 @@ export interface SimDataset {
   capital_financing_summaries: CapitalFinancingSummary[];
   treasury_financial_accounts: TreasuryFinancialAccount[];
   treasury_outbound_payments: TreasuryOutboundPayment[];
+  treasury_received_credits: TreasuryReceivedCredit[];
   issuing_cardholders: IssuingCardholder[];
   issuing_cards: IssuingCard[];
   issuing_authorizations: IssuingAuthorization[];
@@ -444,10 +456,33 @@ export interface TreasuryFinancialAccount {
   account_id: string;
   status: 'open' | 'closed';
   active_features: string[];
+  /**
+   * The ABA financial address — what makes the account payable. An organizer
+   * gives these to a sponsor or a bank the same way they would their own.
+   */
+  routing_number: string;
+  account_number_last4: string;
+  /**
+   * Derived, not asserted: settled credits in, less posted payments out, less
+   * approved card spend. See `generateEmbeddedFinance`.
+   */
   balance_cash: number;
   balance_inbound_pending: number;
   balance_outbound_pending: number;
   currency: string;
+  created: number;
+}
+
+/** Money arriving into a stored balance — here, weekly ticket-revenue sweeps. */
+export interface TreasuryReceivedCredit {
+  id: string;
+  financial_account_id: string;
+  account_id: string;
+  amount: number;
+  currency: string;
+  status: 'succeeded' | 'pending' | 'failed';
+  description: string;
+  network: string;
   created: number;
 }
 

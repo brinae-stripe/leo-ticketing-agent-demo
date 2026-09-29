@@ -2,7 +2,6 @@
 
 import { ArrowRight, ArrowUpRight, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import * as React from 'react';
 
 import { StadiumLights, Wordmark } from '@/components/brand/wordmark';
@@ -16,6 +15,7 @@ import { SimGate } from '@/components/layout/sim-gate';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody, CardDescription, CardHeader, CardTitle, Badge } from '@/components/ui/primitives';
 import { DataTable } from '@/components/ui/data-table';
+import { AskAgentLink, useAskAgent } from '@/components/layout/app-shell';
 import { AGENT, LENS } from '@/lib/brand';
 import { SCALE_FACTOR, TOTAL_ACCOUNTS, TOTAL_CHARGES } from '@/lib/sim/constants';
 import { countCompact, humanize, moneyCompact, percent } from '@/lib/sim/format';
@@ -44,7 +44,7 @@ export function Overview() {
 }
 
 function Hero() {
-  const router = useRouter();
+  const agent = useAskAgent();
   const [question, setQuestion] = React.useState('');
 
   return (
@@ -68,7 +68,7 @@ function Hero() {
           onSubmit={(event) => {
             event.preventDefault();
             const trimmed = question.trim();
-            router.push(trimmed ? `/leo?q=${encodeURIComponent(trimmed)}` : '/leo');
+            agent.open(trimmed || undefined);
           }}
           className="mt-8 max-w-2xl"
         >
@@ -173,9 +173,9 @@ function OverviewBody() {
               <CardTitle>Cost and risk</CardTitle>
               <CardDescription>
                 Effective Stripe rate against disputes opened.{' '}
-                <Link href="/leo?q=Why+did+our+effective+fee+go+up+last+week%3F" className="font-medium text-blue-600 hover:underline">
+                <AskAgentLink question="Why did our effective fee go up last week?">
                   Ask why it moved
-                </Link>
+                </AskAgentLink>
               </CardDescription>
             </div>
           </CardHeader>
@@ -200,7 +200,7 @@ function OverviewBody() {
               <CardDescription>Net of refunds, trailing quarter.</CardDescription>
             </div>
             <Link
-              href="/organizers"
+              href="/platform/organizers"
               className="shrink-0 text-[12.5px] font-medium text-blue-600 hover:underline"
             >
               All 70 organizers
@@ -243,7 +243,7 @@ function OverviewBody() {
           />
           <CardBody className="border-t border-gray-200">
             <Link
-              href="/leo?q=Which+organizers%27+buyers+would+benefit+from+Apple+Pay+or+pay-over-time%3F"
+              href="/platform/organizers"
               className="inline-flex items-center gap-1 text-[13px] font-medium text-blue-600 hover:underline"
             >
               Which organizers should turn wallets on?
@@ -269,6 +269,7 @@ function OverviewBody() {
 }
 
 function KpiTile({ kpi }: { kpi: Kpi }) {
+  const agent = useAskAgent();
   const tone = {
     neutral: 'text-gray-900',
     good: 'text-success',
@@ -303,9 +304,12 @@ function KpiTile({ kpi }: { kpi: Kpi }) {
 
   return (
     <Card className="transition-colors hover:border-blue-400 hover:bg-blue-50/30">
-      <Link href={`/leo?q=${encodeURIComponent(kpi.ask)}`} className="block px-5 py-4">
+      <button
+        onClick={() => agent.open(kpi.ask!)}
+        className="block w-full px-5 py-4 text-left"
+      >
         {body}
-      </Link>
+      </button>
     </Card>
   );
 }

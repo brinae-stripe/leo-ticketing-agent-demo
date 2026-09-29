@@ -7,18 +7,25 @@ Somebody asks a question in plain English. LEO answers from simulated Stripe Dat
 tables, shows the SQL it ran, proposes a resolution, and offers buttons that execute
 simulated Stripe MCP and REST calls — each behind an explicit human approval.
 
-**One pipeline, two views.** That split is the point of the demo:
+**Two views, one pipeline.** They are separate products in the UI, not two descriptions of
+one. The **Viewing as** control at the top of the sidebar switches between them and the whole
+rail changes:
 
-| | Platform view (`/leo`) | Organizer view (`/organizers/[id]`) |
+| | Platform view (`/platform/*`) | Organizer view (`/o/<account>/*`) |
 | --- | --- | --- |
 | Who | Hana, Marquee finance and operations | Elena, one event organizer |
 | Scope | All 70 organizers | One connected account, by `account_id` |
 | Sees | Everything, including Marquee's own margin | Their own rows only |
-| Why it exists | An internal tool that makes the ops team smaller than the volume needs | The version Marquee can package and sell |
+| Money nav | Advances · Stored balances · Card program | Event Account · Production Cards · Event Advance |
+| Why it exists | Runs the book and the finance program | The version Marquee can package and sell |
 
 The difference between them is one clause in a `WHERE`. Building the agent once for internal
 operations means the organizer-facing version is not a second project — which is what makes
 it a product rather than a cost centre.
+
+LEO is a **drawer**, not a page. It opens over whatever you are looking at, scoped to the view
+you are in, so asking a question never costs you your place. Contextual "Ask LEO" buttons on
+the money pages deep-link a question into it.
 
 Both names live in [`lib/brand.ts`](lib/brand.ts), so renaming the platform or the agent is
 a one-line edit. `npm run check:names` fails the build if a reserved name appears anywhere,
@@ -76,20 +83,40 @@ both Turbopack and webpack in [`next.config.mjs`](next.config.mjs), so `next bui
 
 ## The pages
 
-The nav is split in two: `Dashboard · Events · Organizers · LEO` is the platform's own admin
-and mirrors the tab structure an event back office actually uses. `Audit · How it works` is
-about the demo itself, and sits behind a rule so it does not read as product surface.
+A dark left rail, grouped into sections, because grouping is itself the argument: a finance
+product area reading as a product area next to Ticketing is the claim the demo is making,
+and it is made in the navigation before anyone opens a page.
 
-| Route              | What is there |
-| ------------------ | ------------- |
-| `/`                | KPI tiles, 13-week trend charts, top organizers by volume, and the entry point to LEO |
-| `/events`          | All 324 events, split on-sale from past — the two get read for opposite reasons |
-| `/events/[id]`     | Event overview: daily activity curve, issued inventory per price level, derived stats |
-| `/organizers`      | All 70 connected accounts, filterable by category, state, and which finance products they have |
-| `/organizers/[id]` | One organizer: requirements, payouts, method mix, disputes, readers, embedded finance — plus the organizer view of LEO |
-| `/leo`             | The platform view of LEO |
-| `/audit`           | Every simulated call this session made, with request and response |
-| `/how-it-works`    | The flow, the two views, the MCP-versus-API split, the Dashboard-only list, and the schema caveats |
+**Platform view**
+
+| Route | What is there |
+| ----- | ------------- |
+| `/platform` | KPI tiles, 13-week trend charts, top organizers by volume |
+| `/platform/events` | All 324 events, split on-sale from past — the two get read for opposite reasons |
+| `/platform/events/[id]` | Event overview: daily activity curve, issued inventory per price level, derived stats |
+| `/platform/organizers` | All 70 connected accounts, filterable by category, state, and which money products they have |
+| `/platform/money/advances` | The advance portfolio, what is outstanding, and the offers nobody has surfaced |
+| `/platform/money/treasury` | The pre-event float, who is enrolled, and who has float and no account |
+| `/platform/money/cards` | Cards issued, combined ceiling, approved spend, what the controls caught |
+| `/platform/settlements` | Service fees accrued per event by post-event organizers |
+| `/platform/audit` | Every simulated call this session made, with request and response |
+
+**Organizer view**
+
+| Route | What is there |
+| ----- | ------------- |
+| `/o/[id]` | Their dashboard: sales, commercials, and pointers into the money section |
+| `/o/[id]/events` | The same events list, scoped to this account |
+| `/o/[id]/money` | Money overview: balance hero, next settlement, product tiles, cross-product timeline |
+| `/o/[id]/money/account` | **Event Account** (Treasury): balance, spendable, routing and account number, reconciling ledger |
+| `/o/[id]/money/cards` | **Production Cards** (Issuing): cards, limits, allow-lists, and every decline |
+| `/o/[id]/money/advance` | **Event Advance** (Capital): the offer or the drawn advance, with payback worked out |
+| `/o/[id]/payments` | Method mix, disputes, readers |
+| `/o/[id]/account` | Verification requirements and payout configuration |
+
+`/how-it-works` sits outside both: the flow, the two views, where the money products live, the
+MCP-versus-API split, the Dashboard-only list, and the schema caveats. The old URLs (`/`,
+`/events`, `/organizers/:id`, `/leo`, `/audit`) redirect, because they have been shared.
 
 ---
 
@@ -161,7 +188,7 @@ call per item (17 refunds, 17 audit entries). Large ones chunk — the cancellat
 
 ## Scenarios
 
-**Platform view** (`/leo`) — payments first, then the three that only become askable once
+**Platform view** (LEO drawer, platform scope) — payments first, then the three that only become askable once
 payment data and the platform's own event data are in the same warehouse.
 
 | Scenario | Question |
@@ -179,7 +206,7 @@ payment data and the platform's own event data are in the same warehouse.
 | Treasury float | How much are we holding before events, and for how long? |
 | Issuing vendor spend | Which organizers are paying vendors by bank transfer instead of card? |
 
-**Organizer view** (`/organizers/[id]` → Organizer copilot)
+**Organizer view** (LEO drawer, scoped to one account)
 
 | Scenario | Question |
 | --- | --- |
@@ -192,10 +219,13 @@ payment data and the platform's own event data are in the same warehouse.
 | Issuing team card | Give my production lead a card with a monthly limit |
 
 Treasury and Issuing are on a handful of organizers by design, and a Capital offer only
-exists where Stripe wrote one — so the organizer scenarios all have a "you do not have this,
-and here is why" branch, which is the one you will hit on a random organizer. Filter
-`/organizers` by **Has a stored balance**, **Has issued cards** or **Has a financing offer**
-to land on an account where the other branch runs.
+exists where Stripe wrote one — so every organizer page and scenario has a "you do not have
+this, and here is why" branch, which is what you land on for most accounts. The **Viewing as**
+switcher marks organizers that do have money products and lists them first; `/platform/organizers`
+is also filterable by **Has a stored balance**, **Has issued cards** or **Has a financing offer**.
+
+`Tidewater Playhouse` and `Ink & Panel Comic Fest` have all three, which makes them the
+accounts to open first in a live demo.
 
 ---
 
@@ -251,6 +281,28 @@ Calibrated to: 95.7% payment success · 1.0% block rate · 17% wallet share of a
 Link share of transactions · 10% card-present · under 1% of volume on pay-over-time · 0.08%
 dispute rate · 12% non-US cards converting ~5 pts worse · ~0.5% outdated-card-details
 declines · debit ~2 pts below credit.
+
+**The stored balance is a real ledger.** `balance_cash` is derived, not asserted: settled
+received credits, less posted outbound payments, less approved card spend. Nothing is floored
+or fudged — card authorisations are capped at what the balance could actually fund while the
+data is generated, so a declined-for-insufficient-funds authorisation never shows up as
+approved. On the Event Account page the settled rows sum to the balance, the four stat tiles
+derive to the same figure, pending rows are greyed because they are not in it yet, and declined
+authorisations render at zero. A Capital advance is deliberately absent from that ledger:
+Capital pays out to the Stripe balance rather than into the stored balance, so including it
+would break the reconciliation.
+
+**One number for volume.** `accounts.metadata.trailing_volume` is the authoritative trailing
+90-day figure — platform scale, and corrected for the one fixture event that carries its full
+charge list instead of a 1:100 sample. Every consumer reads that column rather than re-deriving
+it, because getting the correction wrong once handed the largest financing offer on the platform
+to a test fixture.
+
+**Withhold rates are solved, not drawn.** A Capital advance's withhold rate is computed from the
+advance and a target payback window against the organizer's own run rate, and repayment progress
+uses the same arithmetic the Event Advance page shows. Pick them independently and a four-day-old
+advance shows 2% repaid next to a daily rate implying 12% — which is the kind of contradiction a
+controller spots immediately.
 
 **Embedded finance is not sampled.** `charges` is a 1:100 sample. The Capital, Treasury and
 Issuing tables are not, because there is nothing to sample — a financing offer is one row per

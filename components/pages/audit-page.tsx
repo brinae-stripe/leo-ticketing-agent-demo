@@ -203,7 +203,7 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
               <>
                 <span aria-hidden>·</span>
                 <Link
-                  href={`/organizers/${entry.stripeAccount}`}
+                  href={`/o/${entry.stripeAccount}`}
                   className="font-medium text-blue-600 hover:underline"
                   onClick={(event) => event.stopPropagation()}
                 >

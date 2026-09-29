@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Red_Hat_Display, Red_Hat_Text } from 'next/font/google';
 
-import { SimBanner } from '@/components/layout/sim-banner';
-import { SiteFooter, SiteHeader } from '@/components/layout/site-header';
+import { AppShell } from '@/components/layout/app-shell';
 import { AGENT, PLATFORM } from '@/lib/brand';
 
 import { Providers } from './providers';
@@ -44,10 +43,7 @@ export default function RootLayout({
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body className="flex min-h-screen flex-col">
         <Providers>
-          <SimBanner />
-          <SiteHeader />
-          <main className="flex-1">{children}</main>
-          <SiteFooter />
+          <AppShell>{children}</AppShell>
         </Providers>
       </body>
     </html>

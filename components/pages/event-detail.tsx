@@ -16,6 +16,7 @@ import {
   EventActivityChart,
   type ActivityMetric,
 } from '@/components/charts/trend-charts';
+import { AskAgentButton, AskAgentLink } from '@/components/layout/app-shell';
 import { SimGate } from '@/components/layout/sim-gate';
 import { Button } from '@/components/ui/button';
 import {
@@ -71,7 +72,7 @@ function EventDetailBody({ eventId }: { eventId: string }) {
   return (
     <>
       <Link
-        href="/events"
+        href="/platform/events"
         className="inline-flex items-center gap-1.5 text-[13px] font-medium text-blue-600 hover:underline"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
@@ -107,7 +108,7 @@ function EventHeader({ detail }: { detail: EventDetail }) {
           </p>
           <p className="mt-1 text-[13px] text-gray-500">
             <Link
-              href={`/organizers/${detail.accountId}`}
+              href={`/o/${detail.accountId}`}
               className="font-medium text-blue-600 hover:underline"
             >
               {detail.organizerName}
@@ -135,35 +136,28 @@ function EventHeader({ detail }: { detail: EventDetail }) {
           firing here, because both need an approval sheet in front of them. */}
       <div className="mt-4 flex flex-wrap gap-2">
         <Button asChild variant="secondary" size="sm">
-          <Link href={`/organizers/${detail.accountId}`}>
+          <Link href={`/o/${detail.accountId}`}>
             <Ticket className="h-3.5 w-3.5" />
             Organizer
           </Link>
         </Button>
-        <Button asChild variant="secondary" size="sm">
-          <Link
-            href={`/leo?q=${encodeURIComponent(`Are all readers at ${detail.organizerName} online for tomorrow?`)}`}
-          >
-            <QrCode className="h-3.5 w-3.5" />
+        <AskAgentButton
+          question={`Are all readers at ${detail.organizerName} online for tomorrow?`}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <QrCode className="h-3.5 w-3.5" aria-hidden />
             Reader readiness
-          </Link>
-        </Button>
+          </span>
+        </AskAgentButton>
         {!past && detail.status !== 'cancelled' && (
-          <Button asChild variant="secondary" size="sm">
-            <Link
-              href={`/leo?q=${encodeURIComponent(`${detail.name} is cancelled — refund everyone`)}`}
-            >
-              <CalendarX2 className="h-3.5 w-3.5" />
+          <AskAgentButton question={`${detail.name} is cancelled — refund everyone`}>
+            <span className="inline-flex items-center gap-1.5">
+              <CalendarX2 className="h-3.5 w-3.5" aria-hidden />
               Cancel event
-            </Link>
-          </Button>
+            </span>
+          </AskAgentButton>
         )}
-        <Button asChild size="sm">
-          <Link href="/leo">
-            <Sparkles className="h-3.5 w-3.5" />
-            Ask {AGENT}
-          </Link>
-        </Button>
+        <AskAgentButton question={`How did ${detail.name} sell?`} />
       </div>
     </header>
   );
@@ -465,13 +459,10 @@ function EventStats({ detail }: { detail: EventDetail }) {
               {detail.organizerName} settles after the event rather than at charge time, so this
               is billed back once the doors close.{' '}
               {!detail.serviceFeeSettled && (
-                <Link
-                  href={`/leo?q=${encodeURIComponent("Which organizers owe service fees from last week's events?")}`}
-                  className="font-medium text-blue-600 hover:underline"
-                >
+                <AskAgentLink question="Which organizers owe service fees from last week's events?">
                   Settle it with {AGENT}
                   <ExternalLink className="ml-0.5 inline h-3 w-3" />
-                </Link>
+                </AskAgentLink>
               )}
             </p>
           </CardBody>

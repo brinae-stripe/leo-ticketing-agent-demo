@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import { SimGate } from '@/components/layout/sim-gate';
 import { Badge, Card, Input, Select, Skeleton } from '@/components/ui/primitives';
+import { organizerBase } from '@/lib/nav';
 import { CATEGORY_PROFILES } from '@/lib/sim/catalog';
 import { NOW } from '@/lib/sim/constants';
 import { count, money, percent, shortDate, untilLabel } from '@/lib/sim/format';
@@ -30,15 +31,24 @@ const TIMEFRAME_LABELS: Record<Timeframe, string> = {
   all: 'All events',
 };
 
-export function EventsList() {
+/**
+ * Doubles as the platform's Events tab and an organizer's own.
+ *
+ * `accountId` narrows it to one organizer, which is the same filter the
+ * organizer view applies everywhere — there is no second component, just a
+ * scope. The organizer column drops out when scoped, since repeating their own
+ * name down every row tells them nothing.
+ */
+export function EventsList({ accountId }: { accountId?: string } = {}) {
+  const scoped = accountId != null;
   return (
     <div className="mx-auto max-w-[84rem] px-4 py-8 sm:px-6">
       <header className="mb-6">
         <h1 className="font-display text-[26px] font-black text-gray-900">Events</h1>
         <p className="mt-1.5 text-[14px] text-gray-500">
-          Every event across the platform, with the money each one has taken. This is the join
-          Stripe cannot do alone — charges know the amount, the event catalogue knows what it
-          was for.
+          {scoped
+            ? 'Every event on this account, with the money each one has taken.'
+            : 'Every event across the platform, with the money each one has taken. This is the join Stripe cannot do alone — charges know the amount, the event catalogue knows what it was for.'}
         </p>
       </header>
       <SimGate
@@ -53,14 +63,15 @@ export function EventsList() {
           </div>
         }
       >
-        <EventsTable />
+        <EventsTable accountId={accountId} />
       </SimGate>
     </div>
   );
 }
 
-function EventsTable() {
+function EventsTable({ accountId }: { accountId?: string }) {
   const { data, index } = useSim();
+  const scoped = accountId != null;
 
   const [query, setQuery] = React.useState('');
   const [timeframe, setTimeframe] = React.useState<Timeframe>('on_sale');
@@ -72,6 +83,7 @@ function EventsTable() {
     const needle = query.trim().toLowerCase();
     return all
       .filter((row) => {
+        if (accountId && row.accountId !== accountId) return false;
         if (timeframe === 'on_sale' && !(row.status === 'on_sale' && row.startsAt >= NOW)) {
           return false;
         }
@@ -90,7 +102,7 @@ function EventsTable() {
       .sort((a, b) =>
         timeframe === 'on_sale' ? a.startsAt - b.startsAt : b.startsAt - a.startsAt,
       );
-  }, [all, category, query, timeframe]);
+  }, [accountId, all, category, query, timeframe]);
 
   const categories = Object.keys(CATEGORY_PROFILES) as OrganizerCategory[];
 
@@ -131,7 +143,8 @@ function EventsTable() {
           ))}
         </Select>
         <span className="nums ml-auto text-[12.5px] text-gray-500">
-          {rows.length} of {all.length}
+          {rows.length} of{' '}
+          {accountId ? all.filter((r) => r.accountId === accountId).length : all.length}
         </span>
       </div>
 
@@ -141,7 +154,9 @@ function EventsTable() {
             <thead className="bg-gray-50">
               <tr className="border-b border-gray-200 text-[11.5px] uppercase tracking-wide text-gray-500">
                 <th className="px-4 py-2.5 text-left font-semibold">Event</th>
-                <th className="px-4 py-2.5 text-left font-semibold">Organizer</th>
+                {!scoped && (
+                  <th className="px-4 py-2.5 text-left font-semibold">Organizer</th>
+                )}
                 <th className="px-4 py-2.5 text-left font-semibold">Doors</th>
                 <th className="px-4 py-2.5 text-right font-semibold">Tickets</th>
                 <th className="px-4 py-2.5 text-right font-semibold">Net taken</th>
@@ -157,7 +172,7 @@ function EventsTable() {
                 >
                   <td className="px-4 py-2.5">
                     <Link
-                      href={`/events/${row.id}`}
+                      href={`/platform/events/${row.id}`}
                       className="font-semibold text-gray-900 hover:text-blue-600 hover:underline"
                     >
                       {row.name}
@@ -166,14 +181,16 @@ function EventsTable() {
                       {row.venue} · {row.city}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <Link
-                      href={`/organizers/${row.accountId}`}
-                      className="text-gray-700 hover:text-blue-600 hover:underline"
-                    >
-                      {row.organizerName}
-                    </Link>
-                  </td>
+                  {!scoped && (
+                    <td className="px-4 py-2.5">
+                      <Link
+                        href={organizerBase(row.accountId)}
+                        className="text-gray-700 hover:text-blue-600 hover:underline"
+                      >
+                        {row.organizerName}
+                      </Link>
+                    </td>
+                  )}
                   <td className="nums px-4 py-2.5 text-gray-600">
                     {shortDate(row.startsAt)}
                     <div className="text-[11.5px] text-gray-400">

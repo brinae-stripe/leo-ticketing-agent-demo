@@ -180,6 +180,8 @@ export async function createFinancialAccount(
         account_id: stripeAccount,
         status: 'open',
         active_features: Object.keys(params.features),
+        routing_number: '011401533',
+        account_number_last4: nextDigits(4),
         // A new financial account starts empty. Funds arrive when the payout
         // destination is switched to it, which is a separate change.
         balance_cash: 0,

@@ -219,6 +219,8 @@ export function generateDataset(seed: number = SEED): SimDataset {
         settlement_mode: settlementMode,
         service_fee_percent: settlementMode === 'on_charge' ? '0.035' : '0.042',
         service_fee_fixed: settlementMode === 'on_charge' ? '125' : '150',
+        // Filled in once the charges exist; see the corrected computation below.
+        trailing_volume: '0',
       },
     };
     accounts.push(account);
@@ -1323,16 +1325,32 @@ export function generateDataset(seed: number = SEED): SimDataset {
 
   // A second pass over the finished payments data, so eligibility and balances
   // are derived from what actually settled rather than invented alongside it.
+  /**
+   * Trailing 90-day volume, corrected for the one event that is not sampled.
+   *
+   * Every other charge row stands in for 100 real payments, so embedded finance
+   * scales them by SCALE_FACTOR to get real dollars. The cancellation event is
+   * the exception: it carries its full charge list so the batch refund runs
+   * against real rows, which means scaling it too would overstate that organizer
+   * by exactly 100x — and since it is ~9% of all charge rows, it would hand the
+   * largest financing offer on the platform to an artefact of a test fixture.
+   *
+   * So the sampled contribution is divided out for that event. The value stored
+   * here stays in sampled units, because callers multiply by SCALE_FACTOR.
+   */
   const trailingVolumeByAccount = new Map<string, number>();
   const paidChargeCountByAccount = new Map<string, number>();
   const trailingStart = NOW - 90 * DAY;
   for (const charge of successfulCharges) {
     if (charge.created < trailingStart) continue;
+    const net = charge.amount - charge.amount_refunded;
+    const weight = charge.metadata.event_id === cancellationEvent.id ? 1 / SCALE_FACTOR : 1;
     trailingVolumeByAccount.set(
       charge.account_id,
-      (trailingVolumeByAccount.get(charge.account_id) ?? 0) +
-        (charge.amount - charge.amount_refunded),
+      (trailingVolumeByAccount.get(charge.account_id) ?? 0) + net * weight,
     );
+    // Unweighted: this is an activity and tenure signal, not an amount, so the
+    // sampling correction does not apply to it.
     paidChargeCountByAccount.set(
       charge.account_id,
       (paidChargeCountByAccount.get(charge.account_id) ?? 0) + 1,
@@ -1346,6 +1364,13 @@ export function generateDataset(seed: number = SEED): SimDataset {
     if (current == null || event.starts_at < current) {
       nextEventByAccount.set(event.account_id, event.starts_at);
     }
+  }
+
+  // Publish the corrected figure on each account so nothing downstream has to
+  // redo the scaling or remember the fixture exception.
+  for (const account of accounts) {
+    const sampled = trailingVolumeByAccount.get(account.id) ?? 0;
+    account.metadata.trailing_volume = String(Math.round(sampled * SCALE_FACTOR));
   }
 
   const embeddedFinance = generateEmbeddedFinance(

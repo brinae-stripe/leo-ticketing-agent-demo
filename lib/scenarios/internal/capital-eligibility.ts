@@ -52,17 +52,18 @@ export const capitalEligibility: Scenario = {
   async run(ctx): Promise<ScenarioResult> {
     const eligibilitySql = sql`
 -- Who clears the bar, and by how much.
--- Two filters, not one. Volume and history in the HAVING, because those are
--- aggregates; account standing in the WHERE, because an organizer who cannot be
--- paid out cannot be advanced against either — there is nothing to withhold
--- repayment from.
--- charges is a 1:100 sample, so trailing volume is scaled to real dollars here
--- rather than in application code: the threshold is a real-dollar figure and
--- comparing it against sampled rows would exclude everybody.
+-- Two filters. Volume and history, and account standing — because an organizer
+-- who cannot be paid out cannot be advanced against either: there is nothing to
+-- withhold repayment from.
+--
+-- metadata_trailing_volume is the platform's own field, already at real-dollar
+-- scale. The charge rows are a 1:100 sample and one fixture event is not sampled
+-- at all, so deriving this here would mean getting both corrections right in
+-- every query that needs it. It is computed once, on the account.
 SELECT
   a.id AS account_id,
   a.business_profile_name AS organizer,
-  SUM(c.amount - c.amount_refunded) * ${SCALE_FACTOR} AS trailing_volume,
+  a.metadata_trailing_volume AS trailing_volume,
   COUNT(*) AS paid_charges,
   a.payout_schedule_interval,
   a.metadata_next_event_date AS next_event
@@ -73,9 +74,10 @@ WHERE c.paid = true
   AND a.charges_enabled = true
   AND a.payouts_enabled = true
   AND a.requirements_past_due_count = 0
-GROUP BY a.id, a.business_profile_name, a.payout_schedule_interval, a.metadata_next_event_date
-HAVING SUM(c.amount - c.amount_refunded) * ${SCALE_FACTOR} >= ${CAPITAL_ELIGIBILITY.minTrailingVolume}
-  AND COUNT(*) >= ${CAPITAL_ELIGIBILITY.minPaidCharges}
+  AND a.metadata_trailing_volume >= ${CAPITAL_ELIGIBILITY.minTrailingVolume}
+GROUP BY a.id, a.business_profile_name, a.metadata_trailing_volume,
+         a.payout_schedule_interval, a.metadata_next_event_date
+HAVING COUNT(*) >= ${CAPITAL_ELIGIBILITY.minPaidCharges}
 ORDER BY trailing_volume DESC`;
 
     const offersSql = sql`

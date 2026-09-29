@@ -96,6 +96,7 @@ function flattenAccounts(data: SimDataset): Row[] {
     metadata_settlement_mode: a.metadata.settlement_mode,
     metadata_service_fee_percent: Number(a.metadata.service_fee_percent),
     metadata_service_fee_fixed: Number(a.metadata.service_fee_fixed),
+    metadata_trailing_volume: Number(a.metadata.trailing_volume),
   }));
 }
 
@@ -138,6 +139,8 @@ function flattenFinancialAccounts(data: SimDataset): Row[] {
     status: a.status,
     active_features: a.active_features.join(','),
     active_features_count: a.active_features.length,
+    routing_number: a.routing_number,
+    account_number_last4: a.account_number_last4,
     balance_cash: a.balance_cash,
     balance_inbound_pending: a.balance_inbound_pending,
     balance_outbound_pending: a.balance_outbound_pending,
@@ -196,6 +199,7 @@ export function sqlTables(data: SimDataset): Record<string, Row[]> {
     capital_financing_summaries: data.capital_financing_summaries as unknown as Row[],
     treasury_financial_accounts: flattenFinancialAccounts(data),
     treasury_outbound_payments: data.treasury_outbound_payments as unknown as Row[],
+    treasury_received_credits: data.treasury_received_credits as unknown as Row[],
     issuing_cardholders: data.issuing_cardholders as unknown as Row[],
     issuing_cards: flattenIssuingCards(data),
     issuing_authorizations: data.issuing_authorizations as unknown as Row[],

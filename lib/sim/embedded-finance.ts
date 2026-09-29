@@ -1,4 +1,4 @@
-import { CURRENCY, DAY, NOW, SCALE_FACTOR } from './constants';
+import { CURRENCY, DAY, HOUR, NOW, SCALE_FACTOR } from './constants';
 import { Rng } from './rng';
 import type {
   Account,
@@ -10,6 +10,7 @@ import type {
   IssuingCardholder,
   TreasuryFinancialAccount,
   TreasuryOutboundPayment,
+  TreasuryReceivedCredit,
 } from './types';
 
 /**
@@ -118,13 +119,25 @@ export const CAPITAL_ELIGIBILITY = {
   minTrailingVolume: 4_000_000_00,
   minPaidCharges: 120,
   /**
-   * Advance sizing as a share of trailing 90-day volume. A 90-day window at 5%
-   * is roughly six weeks of revenue, which is the order of magnitude Capital
-   * advances actually land at.
+   * Advance size as a share of *annual* volume.
+   *
+   * A few per cent of a year's processing, not a few per cent of a quarter's —
+   * the latter produces advances small enough to look like a rounding error next
+   * to the volume they are secured against.
    */
-  offerShareOfVolume: [0.03, 0.08] as const,
+  offerShareOfAnnualVolume: [0.03, 0.08] as const,
   feeRate: [0.06, 0.11] as const,
-  withholdRate: [0.09, 0.17] as const,
+  /**
+   * The payback window the withhold rate is solved for, in days.
+   *
+   * Withholding is not picked independently of the advance — it is chosen so the
+   * advance clears in a sensible time at the organizer's own run rate. Deriving
+   * it here means the rate, the advance and the repayment progress all agree:
+   * pick them separately and a four-day-old advance ends up showing 2% repaid
+   * next to a daily rate that implies 12%, which is the kind of contradiction a
+   * controller spots in about five seconds.
+   */
+  paybackTargetDays: [120, 240] as const,
   offerTermDays: 30,
 } as const;
 
@@ -162,6 +175,7 @@ export interface EmbeddedFinanceOutput {
   capital_financing_summaries: CapitalFinancingSummary[];
   treasury_financial_accounts: TreasuryFinancialAccount[];
   treasury_outbound_payments: TreasuryOutboundPayment[];
+  treasury_received_credits: TreasuryReceivedCredit[];
   issuing_cardholders: IssuingCardholder[];
   issuing_cards: IssuingCard[];
   issuing_authorizations: IssuingAuthorization[];
@@ -199,14 +213,21 @@ export function generateEmbeddedFinance(
 
   for (const account of withOffers) {
     // Platform scale, not sample scale — see the note at the top of this file.
-    const volume = (input.trailingVolumeByAccount.get(account.id) ?? 0) * SCALE_FACTOR;
-    const offered = roundOffer(
-      volume * rng.between(...CAPITAL_ELIGIBILITY.offerShareOfVolume),
-    );
+    const trailing90 = (input.trailingVolumeByAccount.get(account.id) ?? 0) * SCALE_FACTOR;
+    const annualVolume = trailing90 * 4;
+    const share = rng.between(...CAPITAL_ELIGIBILITY.offerShareOfAnnualVolume);
+    const offered = roundOffer(annualVolume * share);
     if (offered < 2_500_000) continue;
 
     const feeRate = rng.between(...CAPITAL_ELIGIBILITY.feeRate);
-    const withholdRate = rng.between(...CAPITAL_ELIGIBILITY.withholdRate);
+    // Solve the withhold rate for the payback window rather than drawing it
+    // independently, so repayment progress and the daily rate cannot disagree.
+    const targetDays = rng.between(...CAPITAL_ELIGIBILITY.paybackTargetDays);
+    const dailyVolume = annualVolume / 365;
+    const withholdRate =
+      dailyVolume > 0
+        ? Math.min(0.25, Math.max(0.05, (offered * (1 + feeRate)) / (dailyVolume * targetDays)))
+        : 0.12;
 
     // The split that makes the platform-side scenario worth asking: a third of
     // live offers have never been shown to the organizer, which is revenue
@@ -252,19 +273,20 @@ export function generateEmbeddedFinance(
 
     if (status !== 'paid_out') continue;
 
-    // Repayment is proportional to how long the advance has been outstanding,
-    // not random, so the remaining balance is consistent with paid_out_at.
+    // Repayment is the withhold rate applied to the organizer's actual run rate
+    // for however long the advance has been outstanding — the same arithmetic the
+    // Event Advance page shows. Anything else and the page contradicts the data.
     const paidOutAt = (acceptedAt ?? created) + DAY;
     const total = offer.offered_amount + offer.fee_amount;
     const elapsedDays = Math.max(0, (NOW - paidOutAt) / DAY);
-    const repaidShare = Math.min(0.92, (elapsedDays / 180) * rng.between(0.7, 1.3));
+    const repaid = Math.min(total * 0.92, dailyVolume * withholdRate * elapsedDays);
     capital_financing_summaries.push({
       offer_id: offer.id,
       account_id: account.id,
       advance_amount: offer.offered_amount,
       fee_amount: offer.fee_amount,
       withhold_rate: offer.withhold_rate,
-      remaining_amount: Math.round(total * (1 - repaidShare)),
+      remaining_amount: Math.round(total - repaid),
       paid_out_at: paidOutAt,
       currency: CURRENCY,
     });
@@ -274,6 +296,7 @@ export function generateEmbeddedFinance(
 
   const treasury_financial_accounts: TreasuryFinancialAccount[] = [];
   const treasury_outbound_payments: TreasuryOutboundPayment[] = [];
+  const treasury_received_credits: TreasuryReceivedCredit[] = [];
 
   // A small pilot, drawn from organizers who have an event still to come.
   // That is the whole premise: money arrives when tickets sell and is not needed
@@ -296,7 +319,8 @@ export function generateEmbeddedFinance(
     const balance = balanceByAccount.get(account.id);
     // Platform scale, as with the offers above.
     const available = (balance?.available ?? 0) * SCALE_FACTOR;
-    const cash = Math.max(5_000_000, Math.round(available * rng.between(0.4, 0.9)));
+    const openedAt = NOW - rng.int(40, 160) * DAY;
+
     const financialAccount: TreasuryFinancialAccount = {
       id: rng.id('fa', 20),
       account_id: account.id,
@@ -309,20 +333,67 @@ export function generateEmbeddedFinance(
         'outbound_payments.ach',
         'outbound_transfers.ach',
       ],
-      balance_cash: cash,
-      balance_inbound_pending: Math.round(
-        (balance?.pending ?? 0) * SCALE_FACTOR * rng.between(0.2, 0.6),
-      ),
+      // An ABA address is what makes the account payable — it is the routing and
+      // account number an organizer gives a sponsor or a bank.
+      routing_number: '011401533',
+      account_number_last4: rng.string(4, '0123456789'),
+      // Filled in below, once the ledger exists.
+      balance_cash: 0,
+      balance_inbound_pending: 0,
       balance_outbound_pending: 0,
       currency: CURRENCY,
-      created: NOW - rng.int(40, 160) * DAY,
+      created: openedAt,
     };
     treasury_financial_accounts.push(financialAccount);
 
-    for (let i = 0; i < rng.int(3, 7); i += 1) {
-      const created = NOW - rng.int(1, 70) * DAY;
-      const amount = Math.round(rng.between(cash * 0.04, cash * 0.3) / 10_000) * 10_000;
+    /* ----------------------------- money in ----------------------------- */
+
+    // Ticket revenue sweeps into the account weekly. Sizing the sweeps off the
+    // organizer's settled balance keeps the account's history proportional to
+    // how much they actually trade, rather than inventing a number and hoping
+    // it looks plausible next to their charges.
+    const weeklySweep = Math.max(200_000, Math.round(available * rng.between(0.18, 0.4)));
+    for (let ts = openedAt + 7 * DAY; ts <= NOW; ts += 7 * DAY) {
+      const created = Math.round(ts + 9 * HOUR);
+      const amount = Math.round((weeklySweep * rng.between(0.55, 1.5)) / 10_000) * 10_000;
+      if (amount < 50_000) continue;
+      // The most recent sweep has not landed yet — that is the inbound pending.
+      const settled = created < NOW - 2 * DAY;
+      treasury_received_credits.push({
+        id: rng.id('rc', 20),
+        financial_account_id: financialAccount.id,
+        account_id: account.id,
+        amount,
+        currency: CURRENCY,
+        status: settled ? 'succeeded' : 'pending',
+        description: 'Ticket revenue settlement',
+        network: 'stripe',
+        created,
+      });
+    }
+
+    const settledIn = treasury_received_credits
+      .filter((c) => c.account_id === account.id && c.status === 'succeeded')
+      .reduce((sum, c) => sum + c.amount, 0);
+
+    /* ---------------------------- money out ----------------------------- */
+
+    // Vendor payments are capped at what had actually arrived by the time each
+    // one went out, so the ledger never goes negative and the running balance
+    // on the activity page is monotonically sane.
+    let spentSoFar = 0;
+    for (let i = 0; i < rng.int(4, 9); i += 1) {
+      const created = NOW - rng.int(1, 84) * DAY;
+      const arrivedByThen = treasury_received_credits
+        .filter((c) => c.account_id === account.id && c.created < created)
+        .reduce((sum, c) => sum + c.amount, 0);
+      const headroom = arrivedByThen - spentSoFar;
+      if (headroom < 200_000) continue;
+
+      const amount = Math.round(rng.between(headroom * 0.08, headroom * 0.35) / 10_000) * 10_000;
       if (amount < 100_000) continue;
+      spentSoFar += amount;
+
       const settled = created < NOW - 3 * DAY;
       treasury_outbound_payments.push({
         id: rng.id('obp', 20),
@@ -345,10 +416,20 @@ export function generateEmbeddedFinance(
       });
     }
 
-    // Money already committed reads as pending outbound rather than as cash.
-    financialAccount.balance_outbound_pending = treasury_outbound_payments
+    const posted = treasury_outbound_payments
+      .filter((p) => p.account_id === account.id && p.status === 'posted')
+      .reduce((sum, p) => sum + p.amount, 0);
+    const processing = treasury_outbound_payments
       .filter((p) => p.account_id === account.id && p.status === 'processing')
       .reduce((sum, p) => sum + p.amount, 0);
+
+    // The balance is derived, not asserted. Card spend is subtracted further
+    // down, once the cards that draw on this account exist.
+    financialAccount.balance_cash = settledIn - posted;
+    financialAccount.balance_inbound_pending = treasury_received_credits
+      .filter((c) => c.account_id === account.id && c.status === 'pending')
+      .reduce((sum, c) => sum + c.amount, 0);
+    financialAccount.balance_outbound_pending = processing;
   }
 
   /* -------------------------------- Issuing ------------------------------ */
@@ -360,6 +441,24 @@ export function generateEmbeddedFinance(
   // Cards only make sense where there is a funding source, so the Issuing pilot
   // is drawn from the Treasury pilot rather than independently.
   const issuingPilot = rng.sample(treasuryPilot, 6);
+
+  /**
+   * How much card spend each account can actually have supported.
+   *
+   * Capped at a share of the cash left after vendor payments, and decremented as
+   * authorisations are generated. Without this, an organizer with a small balance
+   * accumulates more card spend than ever arrived and the Event Account balance
+   * has to be floored to stop it going negative — which is a real authorisation
+   * that would have been declined for insufficient funds, showing up as
+   * approved. The cap is the honest version.
+   */
+  const cardHeadroom = new Map<string, number>();
+  for (const financialAccount of treasury_financial_accounts) {
+    cardHeadroom.set(
+      financialAccount.account_id,
+      Math.round(financialAccount.balance_cash * rng.between(0.2, 0.5)),
+    );
+  }
 
   for (const account of issuingPilot) {
     const slug = account.business_profile_name
@@ -412,11 +511,22 @@ export function generateEmbeddedFinance(
         // card's own controls, which is the whole reason to set them.
         const offPolicy = rng.bool(0.11);
         const index = rng.int(0, OFF_POLICY_CATEGORIES.length - 1);
+        const amount = Math.round(rng.between(limit * 0.02, limit * 0.4) / 1_000) * 1_000;
+
+        // A declined authorisation never moves money, so it does not consume
+        // headroom. An approved one does — and if there is not enough left, the
+        // card would have been declined rather than approved, so skip it.
+        if (!offPolicy) {
+          const left = cardHeadroom.get(account.id) ?? 0;
+          if (amount > left) continue;
+          cardHeadroom.set(account.id, left - amount);
+        }
+
         issuing_authorizations.push({
           id: rng.id('iauth', 20),
           card_id: card.id,
           account_id: account.id,
-          amount: Math.round(rng.between(limit * 0.02, limit * 0.4) / 1_000) * 1_000,
+          amount,
           currency: CURRENCY,
           approved: !offPolicy,
           status: offPolicy ? 'closed' : created < NOW - 2 * DAY ? 'closed' : 'pending',
@@ -433,11 +543,33 @@ export function generateEmbeddedFinance(
     }
   }
 
+  // Cards draw on the stored balance, so approved card spend comes out of cash
+  // the same way a vendor payment does. Doing it here rather than inside the
+  // Treasury block above is only an ordering constraint: the cards did not exist
+  // yet. Without this the Event Account page would show a balance that does not
+  // reconcile against the card activity sitting next to it.
+  for (const financialAccount of treasury_financial_accounts) {
+    const cardSpend = issuing_authorizations
+      .filter(
+        (auth) =>
+          auth.account_id === financialAccount.account_id &&
+          auth.approved &&
+          auth.status === 'closed',
+      )
+      .reduce((sum, auth) => sum + auth.amount, 0);
+    // No floor needed: `cardHeadroom` above already refused any authorisation
+    // the balance could not fund, so this subtraction cannot go negative. If it
+    // ever does, the headroom accounting has drifted and that is worth knowing
+    // rather than papering over.
+    financialAccount.balance_cash -= cardSpend;
+  }
+
   return {
     capital_financing_offers,
     capital_financing_summaries,
     treasury_financial_accounts,
     treasury_outbound_payments,
+    treasury_received_credits,
     issuing_cardholders,
     issuing_cards,
     issuing_authorizations,

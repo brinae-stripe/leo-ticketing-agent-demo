@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+import { AskAgentLink } from '@/components/layout/app-shell';
 import { StadiumLights, Wordmark } from '@/components/brand/wordmark';
 import {
   Badge,
@@ -88,6 +89,7 @@ export default function Page() {
         <Disclaimer />
         <TheFlow />
         <TheTwoViews />
+        <TheMoneySection />
         <Surfaces />
         <DashboardOnlySection />
         <DataSection />
@@ -102,13 +104,14 @@ function Hero() {
       <StadiumLights />
       <div className="relative mx-auto max-w-[84rem] px-4 py-12 sm:px-6 sm:py-16">
         <h1 className="font-display max-w-3xl text-[30px] font-black leading-[1.15] sm:text-[40px]">
-          One pipeline, two views
+          Two views, one pipeline
         </h1>
         <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-white/70">
           <Wordmark className="text-[15px]" /> is a fictional ticketing platform, and {AGENT} —
-          the {AGENT_GLOSS} — is the agent inside it. The same warehouse and the same approval
-          flow serve two audiences: the platform&apos;s own operators, and the event organizers
-          the platform sells to. The data, the organizers and the events are all generated. So is
+          the {AGENT_GLOSS} — is the agent inside it. Use the <strong>Viewing as</strong> control
+          at the top of the sidebar to move between the two: the platform&apos;s own back office,
+          and one organizer&apos;s account. The whole rail changes, because they are genuinely
+          different products. The data, the organizers and the events are all generated. So is
           every API call. What is real is the shape.
         </p>
       </div>
@@ -253,27 +256,27 @@ const VIEWS: ViewSpec[] = [
     key: 'platform',
     icon: Building2,
     accent: 'blue',
-    href: '/leo',
-    hrefLabel: `Open ${AGENT}`,
-    scope: `All ${TOTAL_ACCOUNTS} organizers, every event, and the platform's own balance.`,
-    sees: 'Everything. Cross-organizer aggregates, the fee ledger, who cannot be paid out, which financing offers have never been surfaced.',
+    href: '/platform',
+    hrefLabel: 'Open the platform view',
+    scope: `All ${TOTAL_ACCOUNTS} organizers, every event, and the platform's own money program.`,
+    sees: 'Everything. Cross-organizer aggregates, the fee ledger, who cannot be paid out, the advance portfolio, the float, the card program — and which financing offers have never been surfaced.',
     cannotSee: 'Nothing is withheld — this view is the platform looking at its own book.',
-    why: `An internal tool. It earns ${PLATFORM} nothing directly; it makes a finance and operations team smaller than the volume would otherwise need.`,
+    why: `Partly an internal tool that makes a finance and operations team smaller than the volume would otherwise need, and partly the place ${PLATFORM} sees what its finance products are earning.`,
     scenarios: INTERNAL_SCENARIOS,
   },
   {
     key: 'organizer',
     icon: UserRound,
     accent: 'purple',
-    href: '/organizers',
+    href: '/platform/organizers',
     hrefLabel: 'Pick an organizer',
-    scope: 'One connected account, scoped by account_id in every query.',
-    sees: 'Their own money, buyers, checkout and cards — in plain language, with the SQL kept behind the panel.',
+    scope: 'One connected account, scoped by account_id in every query and in every page.',
+    sees: 'Their own ticket sales, balance, vendor payments, cards and advance — in plain language, with the SQL kept behind the panel.',
     cannotSee: `Another organizer's rows, ${PLATFORM}'s margin on their volume, or any cross-organizer comparison. Those are the platform's business, not theirs.`,
     why: `The one ${PLATFORM} can sell. Same pipeline, same approval flow, pointed at a single account and priced as a product.`,
     scenarios: ORGANIZER_SCENARIOS,
     footnote:
-      'Organizer scenarios only run scoped to one account. Open any organizer and use the Organizer copilot tab — or filter the list by stored balance or financing offer to find one with the embedded-finance products already switched on.',
+      'Treasury and Issuing are on a handful of organizers by design, and a Capital offer only exists where Stripe wrote one — so most organizers land on a "you do not have this, and here is why" page. The switcher marks the accounts that do have money products and lists them first.',
   },
 ];
 
@@ -338,12 +341,12 @@ function TheTwoViews() {
                     {view.scenarios.map((scenario) => (
                       <li key={scenario.id} className="text-[12.5px] leading-snug">
                         {view.key === 'platform' ? (
-                          <Link
-                            href={`/leo?q=${encodeURIComponent(scenario.suggestedPrompt)}`}
-                            className="text-blue-600 hover:underline"
+                          <AskAgentLink
+                            question={scenario.suggestedPrompt}
+                            className="text-left text-blue-600 hover:underline"
                           >
                             {scenario.suggestedPrompt}
-                          </Link>
+                          </AskAgentLink>
                         ) : (
                           <span className="text-gray-700">{scenario.suggestedPrompt}</span>
                         )}
@@ -372,6 +375,86 @@ function TheTwoViews() {
             </Card>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* The money section                                                          */
+/* -------------------------------------------------------------------------- */
+
+const MONEY_SURFACES = [
+  {
+    product: 'Treasury',
+    name: 'Event Account',
+    organizer:
+      'A stored balance. Ticket revenue sweeps in, vendors get paid straight out, and the page carries the routing and account number a sponsor would pay into. Cash and spendable are always shown side by side.',
+    platform:
+      'Stored balances — the float across every organizer, who is enrolled, and who has float and no account.',
+    honest:
+      'The activity table reconciles: credits in, less payments out, less approved card spend, equals the balance above it. An advance is deliberately absent, because Capital pays out to the Stripe balance rather than into this account.',
+  },
+  {
+    product: 'Issuing',
+    name: 'Production Cards',
+    organizer:
+      'A card per person with a monthly ceiling and a merchant-category allow-list, and the list of off-policy purchases the network refused at authorisation.',
+    platform:
+      'Card program — cards issued, combined ceiling, approved spend, and what the controls caught.',
+    honest:
+      'No interchange revenue is estimated anywhere. Revenue share is a commercial term rather than a published rate, so the spend base is the figure on screen instead.',
+  },
+  {
+    product: 'Capital',
+    name: 'Event Advance',
+    organizer:
+      'The live offer with its flat fee, and the withhold rate translated into a payback period against the organizer’s own sales rate — because "17% of every payment" is not a number anyone can decide on.',
+    platform:
+      'Advances — the portfolio, what is outstanding, and the offers nobody has ever surfaced.',
+    honest:
+      'The page stops before accepting. The organizer takes on the liability so the organizer agrees to the terms, in a Stripe-hosted surface the platform can embed but cannot complete.',
+  },
+];
+
+function TheMoneySection() {
+  return (
+    <section>
+      <h2 className="font-display text-[24px] font-bold text-gray-900">
+        Where the money products live
+      </h2>
+      <p className="mt-1.5 max-w-3xl text-[14px] leading-relaxed text-gray-600">
+        Capital, Treasury and Issuing are pages, not just answers. Each one appears twice — once
+        as something an organizer uses, once as something {PLATFORM} runs — and the sidebar groups
+        them so a finance product area reads as a product area rather than as three more reports.
+        {AGENT} is a drawer over all of it, so a question never costs you your place on the page.
+      </p>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        {MONEY_SURFACES.map((surface) => (
+          <Card key={surface.product} className="flex h-full flex-col">
+            <CardHeader>
+              <div>
+                <CardTitle className="text-[15px]">{surface.name}</CardTitle>
+                <CardDescription>Stripe {surface.product}</CardDescription>
+              </div>
+            </CardHeader>
+            <CardBody className="flex flex-1 flex-col gap-3 text-[12.5px] leading-relaxed">
+              <div>
+                <p className="label-xs mb-1">Organizer view</p>
+                <p className="text-gray-700">{surface.organizer}</p>
+              </div>
+              <div>
+                <p className="label-xs mb-1">Platform view</p>
+                <p className="text-gray-700">{surface.platform}</p>
+              </div>
+              <div className="mt-auto rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <p className="label-xs mb-1">Where it stops</p>
+                <p className="text-gray-600">{surface.honest}</p>
+              </div>
+            </CardBody>
+          </Card>
+        ))}
       </div>
     </section>
   );

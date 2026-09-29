@@ -26,6 +26,27 @@ const ALASQL_BROWSER_BUILD = path.join(
 const nextConfig = {
   reactStrictMode: true,
 
+  /**
+   * The routes moved when the app split into two views: everything platform-wide
+   * lives under /platform, and one organizer's own pages under /o/<account>.
+   *
+   * These redirects exist because the old URLs have been shared — a link in a
+   * Slack thread should land somewhere sensible rather than on a 404. `/leo` is
+   * folded into the platform dashboard because the agent is a drawer now and has
+   * no page of its own.
+   */
+  async redirects() {
+    return [
+      { source: '/', destination: '/platform', permanent: false },
+      { source: '/events', destination: '/platform/events', permanent: false },
+      { source: '/events/:id', destination: '/platform/events/:id', permanent: false },
+      { source: '/organizers', destination: '/platform/organizers', permanent: false },
+      { source: '/organizers/:id', destination: '/o/:id', permanent: false },
+      { source: '/audit', destination: '/platform/audit', permanent: false },
+      { source: '/leo', destination: '/platform', permanent: false },
+    ];
+  },
+
   // Turbopack builds and dev server.
   turbopack: {
     resolveAlias: {
