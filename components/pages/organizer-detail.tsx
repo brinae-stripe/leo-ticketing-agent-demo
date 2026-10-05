@@ -15,12 +15,15 @@ import {
   EmptyState,
 } from '@/components/ui/primitives';
 import { PlatformScaleNote, ProductTile } from '@/components/money/money-ui';
+import { Recommendations } from '@/components/money/recommendations';
 import { PLATFORM } from '@/lib/brand';
 import { organizerBase } from '@/lib/nav';
 import { CATEGORY_PROFILES } from '@/lib/sim/catalog';
 import { NOW } from '@/lib/sim/constants';
 import { dateTime, humanize, isoToShortDate, longDate, money, percent, untilLabel } from '@/lib/sim/format';
 import { embeddedFinanceStatus, organizerSummary } from '@/lib/sim/metrics';
+import { organizerDashboardRecommendations } from '@/lib/recommendations/organizer';
+import { fundingOutlook, organizerMoney } from '@/lib/sim/money';
 import { useSim } from '@/lib/store/sim-store';
 import { cn } from '@/lib/utils';
 
@@ -89,6 +92,25 @@ function OrganizerDetailBody({
     () => embeddedFinanceStatus(data, accountId),
     [accountId, data],
   );
+
+  const money$ = React.useMemo(
+    () => organizerMoney(data, index, accountId),
+    [accountId, data, index],
+  );
+  const outlook = React.useMemo(
+    () => fundingOutlook(data, index, accountId),
+    [accountId, data, index],
+  );
+  // Pay-over-time is read off the account's own payment method configuration
+  // rather than from whether anyone used it — the question is whether buyers
+  // were ever offered it.
+  const payOverTimeEnabled = React.useMemo(() => {
+    const config = index.pmcByAccount.get(accountId);
+    if (!config) return false;
+    return ['affirm', 'klarna', 'afterpay_clearpay'].some(
+      (method) => config.payment_methods[method]?.display_preference.preference === 'on',
+    );
+  }, [accountId, index.pmcByAccount]);
 
   if (!account || !summary) {
     return (
@@ -167,6 +189,19 @@ function OrganizerDetailBody({
               tone={summary.openDisputes > 0 ? 'warn' : 'neutral'}
             />
           </div>
+        )}
+
+        {section === 'dashboard' && money$ && (
+          <Recommendations
+            items={organizerDashboardRecommendations(
+              money$,
+              outlook,
+              summary,
+              payOverTimeEnabled,
+            )}
+            scope={{ id: 'page_organizer_dashboard', title: 'Organizer dashboard' }}
+            className="mb-8"
+          />
         )}
 
         <div className="py-6">

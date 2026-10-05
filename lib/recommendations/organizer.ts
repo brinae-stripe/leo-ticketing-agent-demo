@@ -1,7 +1,8 @@
 import { DAY, NOW } from '../sim/constants';
 import { EVENT_SPEND_CATEGORIES } from '../sim/embedded-finance';
-import { longDate, money, percent } from '../sim/format';
-import type { OrganizerMoney } from '../sim/money';
+import { longDate, money, percent, shortDate } from '../sim/format';
+import { organizerBase } from '../nav';
+import type { FundingOutlook, OrganizerMoney } from '../sim/money';
 import { dashboardOnly, ef, mcp } from '../stripe-sim';
 import { sortRecommendations, type Recommendation } from './types';
 
@@ -537,4 +538,141 @@ export function eventAdvanceRecommendations(m: OrganizerMoney): Recommendation[]
   }
 
   return out;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Dashboard                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The organizer dashboard panel.
+ *
+ * Three signals, matching what the deck promises LEO does: flag funding gaps,
+ * flag unusual spending, and surface opportunities to improve event economics.
+ * Each is derived or it does not render — there is no third card for the sake of
+ * having three.
+ */
+export function organizerDashboardRecommendations(
+  m: OrganizerMoney,
+  outlook: FundingOutlook | null,
+  summary: { averageOrderValue: number; walletShare: number; bnplShare: number },
+  payOverTimeEnabled: boolean,
+): Recommendation[] {
+  const out: Recommendation[] = [];
+  const base = organizerBase(m.account.id);
+
+  /* --------------------------- 1. funding gap ---------------------------- */
+
+  if (outlook?.shortfall) {
+    const s = outlook.shortfall;
+    const o = s.obligation;
+    const offer = m.offer;
+    const live = offer && (offer.status === 'undelivered' || offer.status === 'delivered');
+
+    // Capital funds in one to three business days. Whether that clears the due
+    // date is the thing that decides what to do, so it leads.
+    const inTime = s.dueInDays >= 3;
+    const covers = live && offer.offered_amount >= s.amount;
+
+    // Never "due in 0 days" — a deadline today reads as one already missed.
+    const due =
+      s.dueInDays <= 0
+        ? 'is due today'
+        : s.dueInDays === 1
+          ? 'is due tomorrow'
+          : `is due in ${s.dueInDays} days`;
+
+    out.push({
+      id: 'funding_gap',
+      tone: s.dueInDays <= 7 ? 'act' : 'watch',
+      title: `${money(o.amount)} ${o.counterparty ? `to ${o.counterparty} ` : ''}${due} — funds on Stripe come up ${money(s.amount)} short`,
+      why: [
+        `${o.label}${o.counterparty ? `, ${o.counterparty}` : ''}, ${money(o.amount)}, due ${longDate(o.dueDate)}.`,
+        `Everything due by then totals ${money(s.cumulativeDue)} against ${money(s.projectedFunds)} projected reachable.`,
+        s.heldByPreEventHold && outlook.nextEvent
+          ? `Ticket revenue from ${outlook.nextEvent.name} does not count toward that: this account settles after the event, so Marquee holds it until doors open ${longDate(outlook.nextEvent.starts_at)}.`
+          : `Projected from ${money(Math.round(outlook.dailyRevenue))} a day of ticket revenue.`,
+      ].join(' '),
+      next: live
+        ? [
+            covers
+              ? `The ${money(offer.offered_amount)} Event Advance already underwritten covers it.`
+              : `The ${money(offer.offered_amount)} Event Advance covers part of it.`,
+            inTime
+              ? `Capital funds in one to three business days, so there is room before ${shortDate(o.dueDate)} — but not much.`
+              : `Capital funds in one to three business days, so it will not clear ${shortDate(o.dueDate)}. Supplier terms are the faster lever here; an advance still helps with what comes after.`,
+            'This only counts money on Stripe. If the shortfall is already covered from a bank account, nothing needs doing.',
+          ].join(' ')
+        : 'No financing offer is written on this account, so an advance is not an option today — underwriting is Stripe\'s decision, not the platform\'s. The realistic moves are supplier terms or funds from outside Stripe. This projection only sees money on Stripe.',
+      ask: live
+        ? o.counterparty
+          ? `Can an advance cover the ${o.label.toLowerCase()} due to ${o.counterparty}?`
+          : 'Can an advance cover what is due before my next event?'
+        : 'Which organizers could be offered financing?',
+    });
+  } else if (outlook && outlook.obligations.length > 0) {
+    const horizon = outlook.obligations.filter(
+      (o) => (o.dueDate - NOW) / DAY <= 21 && o.dueDate >= NOW,
+    );
+    if (horizon.length > 0) {
+      const total = horizon.reduce((sum, o) => sum + o.amount, 0);
+      out.push({
+        id: 'funding_covered',
+        tone: 'info',
+        title: `${money(total)} of supplier bills due in the next three weeks, and the money is there`,
+        why: `${horizon.length} ${horizon.length === 1 ? 'obligation' : 'obligations'} against ${money(outlook.reachableNow)} reachable now${outlook.dailyRevenue > 0 ? ` plus about ${money(Math.round(outlook.dailyRevenue))} a day arriving` : ''}.${outlook.bufferDays != null ? ` That is roughly ${Math.round(outlook.bufferDays)} days of cash buffer at the current spend rate.` : ''}`,
+        next: 'Nothing to do. Worth re-checking if a large bill lands or the next event sells behind forecast.',
+      });
+    }
+  }
+
+  /* ------------------------- 2. unusual spending ------------------------- */
+
+  // An outlier against this organizer's own history, not against a global
+  // threshold — a $40,000 freight invoice is unremarkable for a festival and
+  // extraordinary for a comedy club.
+  const approved = m.authorizations.filter((a) => a.approved);
+  if (approved.length >= 5) {
+    const amounts = approved.map((a) => a.amount).sort((x, y) => x - y);
+    const median = amounts[Math.floor(amounts.length / 2)];
+    const biggest = approved.slice().sort((a, b) => b.amount - a.amount)[0];
+    if (median > 0 && biggest.amount >= median * 2.5 && biggest.amount >= 500_00) {
+      const card = m.cards.find((c) => c.id === biggest.card_id);
+      const holder = m.cardholders.find((h) => h.id === card?.cardholder_id);
+      out.push({
+        id: 'unusual_spend',
+        tone: 'watch',
+        title: `${money(biggest.amount)} at ${biggest.merchant_name} is ${(biggest.amount / median).toFixed(1)}× this team's typical card spend`,
+        why: `Approved on ${longDate(biggest.created)}${holder ? ` on ${holder.name}'s card` : ''}, in ${biggest.merchant_category.replace(/_/g, ' ')}. The median of the other ${approved.length - 1} approved authorisations is ${money(median)}.`,
+        next: 'Large is not the same as wrong — a venue or freight settlement legitimately dwarfs everyday spend. Flagged because it is the kind of charge worth recognising rather than discovering at month end.',
+        ask: 'Give my production lead a card with a monthly limit',
+      });
+    }
+  }
+
+  /* ------------------------- 3. event economics -------------------------- */
+
+  // High average order value with pay-over-time switched off is the clearest
+  // economics gap available from this data.
+  if (summary.averageOrderValue >= 120_00 && !payOverTimeEnabled) {
+    out.push({
+      id: 'economics_pay_over_time',
+      tone: 'info',
+      title: `Average order is ${money(summary.averageOrderValue)} and pay-over-time is switched off at checkout`,
+      why: `Wallets carry ${percent(summary.walletShare, 1)} of paid orders and pay-over-time ${percent(summary.bnplShare, 1)}. On tickets at this price, instalments are the option buyers most often look for and do not find.`,
+      next: 'Enabling it is a commercial decision as much as a technical one — it costs more per transaction, so it pays off on higher-value tiers and not on cheap ones. Worth modelling against the actual tier mix before switching it on.',
+      ask: 'Should I offer pay-over-time on my $300 VIP tier?',
+    });
+  } else if (summary.walletShare > 0 && summary.walletShare < 0.25) {
+    out.push({
+      id: 'economics_wallets',
+      tone: 'info',
+      title: `Wallets are ${percent(summary.walletShare, 1)} of paid orders`,
+      why: `Apple Pay, Google Pay and Link together account for ${percent(summary.walletShare, 1)} of this account's orders. Wallet checkouts convert better than manually entered cards, and the gap usually comes from how the account was onboarded rather than from a decision anyone made.`,
+      next: 'Worth confirming the payment method configuration has them on before putting effort anywhere else.',
+      ask: "Which organizers' buyers would benefit from Apple Pay or pay-over-time?",
+    });
+  }
+
+  return sortRecommendations(out);
 }

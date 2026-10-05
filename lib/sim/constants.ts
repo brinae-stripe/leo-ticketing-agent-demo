@@ -65,6 +65,14 @@ export const FIXTURES = {
   negativeBalanceOrganizers: 3,
   cancellingEventChargeCount: 2_100,
   offlineReaderVenue: 'Cascade Aquarium',
+  /**
+   * Organizers whose supplier bills outrun their Stripe-visible funds before the
+   * bill falls due. Hand-placed for the same reason every other number here is:
+   * the funding-gap recommendation depends on the situation existing, and
+   * leaving it to the seeded draw meant it fired on everyone or no one depending
+   * on constants that have nothing to do with it.
+   */
+  organizersWithFundingGap: 6,
 } as const;
 
 /** Stripe pricing used by the fee simulation (US standard list pricing). */

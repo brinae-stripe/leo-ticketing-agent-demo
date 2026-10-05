@@ -11,7 +11,10 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "check:names": "node scripts/check-names.mjs",
-    "verify:data": "node --experimental-strip-types scripts/verify-dataset.ts"
+    "verify:build": "tsc -p tsconfig.verify.json",
+    "verify:data": "npm run verify:build && node .tmp-verify/scripts/verify-dataset.js",
+    "verify:scenarios": "npm run verify:build && node .tmp-verify/scripts/verify-scenarios.js",
+    "verify": "npm run verify:data && npm run verify:scenarios"
   },
   "dependencies": {
     "@faker-js/faker": "^10.6.0",

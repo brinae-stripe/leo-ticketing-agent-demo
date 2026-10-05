@@ -157,8 +157,9 @@ async function main(): Promise<void> {
       }
       console.log('  --- queries ---');
       for (const query of result.queries) {
-        const flag = query.result.rows.length === 0 ? 'EMPTY' : 'ok   ';
-        if (query.result.rows.length === 0) failures += 1;
+        const empty = query.result.rows.length === 0;
+        const flag = empty ? (query.emptyIsExpected ? 'none ' : 'EMPTY') : 'ok   ';
+        if (empty && !query.emptyIsExpected) failures += 1;
         console.log(
           `  ${flag} ${query.label.padEnd(44)} ${String(query.result.rows.length).padStart(5)} rows  ${query.result.ms.toFixed(1)}ms${query.result.truncated ? '  (truncated)' : ''}`,
         );

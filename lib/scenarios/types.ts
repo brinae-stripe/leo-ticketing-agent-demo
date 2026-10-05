@@ -11,6 +11,16 @@ export interface ExecutedQuery {
   note?: string;
   sql: string;
   result: QueryResult;
+  /**
+   * Set when finding nothing is the useful answer.
+   *
+   * Most queries returning no rows means the scenario is broken — it narrates
+   * figures it never retrieved. But a check for prior invoices or an advance
+   * already drawn is asked precisely to establish that there are none, and the
+   * answer says so in words. Marking those lets the verification harness keep
+   * treating an unexpected empty as a failure instead of normalising it.
+   */
+  emptyIsExpected?: boolean;
 }
 
 export interface ActionTotal {

@@ -231,8 +231,14 @@ accounts to open first in a live demo.
 
 ## Recommendations on the money pages
 
-Each money page carries a **What LEO noticed** panel. Three rules keep it from
-becoming the filler it easily could be:
+Each money page carries a **What LEO noticed** panel, as does the organizer
+dashboard — where the three signals are the three the deck promises: funding
+gaps, unusual spending, and opportunities to improve event economics. Unusual
+spending is an outlier against *this* organizer's own approved authorisations,
+not a global threshold, because a $40,000 freight invoice is unremarkable for a
+festival and extraordinary for a comedy club.
+
+Three rules keep the panel from becoming the filler it easily could be:
 
 1. **Every card is derived from rows on that page**, and `why` carries the numbers
    that produced it. Nothing renders when the data does not support it — an empty
@@ -351,6 +357,37 @@ where you can see it happening. The organizer page keeps the two apart and label
 embedded-finance card "Platform scale" for the same reason.
 See [`lib/sim/embedded-finance.ts`](lib/sim/embedded-finance.ts).
 
+**`vendor_bills` is not a Stripe object.** It is platform-side data, and the only table here that
+has no Stripe counterpart. It exists because you cannot flag a funding gap without knowing what
+is actually due and when, and production costs are the reason an organizer needs financing in the
+first place. Stripe can see an organizer's balance and their ticket revenue; what it cannot see is
+the venue invoice sitting on their desk. A ticketing platform can, which is precisely the asymmetry
+that makes the platform the right place to notice.
+
+**The funding gap is the platform's own hold, not a number we picked.** Event costs are
+front-loaded and ticket revenue is not: the venue deposit, the staging contract and the talent
+guarantee all fall due *before* doors open, while Marquee holds that event's revenue until it has
+happened, because a cancelled show means refunding buyers. So an organizer's spendable balance
+reflects events that have already run while the bills on their desk belong to the one that has
+not. Nothing is injected to manufacture a shortfall — it falls out of the same pre-event hold the
+platform-side float page measures, seen from the organizer's side. Bills for covered organizers
+are scaled to stay comfortably under projected funds, so the flag is selective rather than
+universal.
+
+**What the projection can and cannot see.** Funds *on Stripe* — balance, stored balance, and
+ticket revenue arriving on Stripe — against obligations due by a date, where obligations are open
+supplier bills, service fees (debited four days after the event they belong to, not on the event
+date), and outbound payments already in flight. An organizer's working capital mostly sits in
+their own bank, which this dataset does not model and the agent has no access to. A shortfall is
+therefore a prompt to check, never a verdict, and the card says so in those words. Two guards keep
+it from crying wolf: a gap under 15% of the obligation that triggered it is a rounding difference
+in a forecast built on a trailing average rather than a finding, and a bill falling due inside
+three days is recorded as paid, because an invoice due tomorrow has either been settled already or
+is a phone call rather than a financing decision. "Due in N days" is counted in calendar days off
+UTC midnight so it agrees with the date printed beside it.
+See [`lib/sim/bills.ts`](lib/sim/bills.ts) and `fundingOutlook` in
+[`lib/sim/money.ts`](lib/sim/money.ts).
+
 Deliberate departures from Sigma, mostly because a browser SQL engine has no JSON operators
 or array aggregates — `metadata.event_id` becomes `metadata_event_id`, array columns become a
 joined string plus a `_count`, and every organizer is US-based settling in USD so the
@@ -365,13 +402,20 @@ Two harnesses, neither part of the build. Both compile through `tsc` (no esbuild
 plain Node:
 
 ```bash
-npx tsc -p tsconfig.verify.json
+npm run verify              # both
 
-# Does the generated data hit its targets?
-node .tmp-verify/scripts/verify-dataset.js
+npm run verify:data         # does the generated data hit its targets?
+npm run verify:scenarios    # do all 19 scenarios run, and does the matcher route correctly?
+```
 
-# Do all 19 scenarios run, and does the matcher route correctly?
-node .tmp-verify/scripts/verify-scenarios.js
+Each wraps `tsc -p tsconfig.verify.json` into `.tmp-verify/`, which is how they have to run:
+the scripts import extensionless specifiers across the whole `lib/` graph, so Node's ESM
+loader cannot resolve them directly no matter how the type stripping is flagged.
+
+For the flags, call the compiled script:
+
+```bash
+npm run verify:build
 
 # …and execute their primary actions against the dataset
 node .tmp-verify/scripts/verify-scenarios.js --actions
@@ -382,8 +426,14 @@ node .tmp-verify/scripts/verify-scenarios.js event_cancellation --actions
 
 `verify-dataset` is what the calibration constants were tuned against — it prints every
 aggregate target with a pass or miss. `verify-scenarios` runs each scenario against the real
-seeded data and flags any query returning zero rows, any scenario that throws, and any
-suggested prompt the matcher fails to route back to its own scenario.
+seeded data and flags any scenario that throws, any suggested prompt the matcher fails to
+route back to its own scenario, and any query returning zero rows — except the handful marked
+`emptyIsExpected`, where finding nothing *is* the answer and the narrative says so ("no
+invoices have been raised yet, so there is no duplicate risk"). Without that distinction those
+two sit there as permanent failures and a genuine empty hides behind them.
+
+Anything touching the generators moves the seeded RNG stream, so re-run both after changing
+them — figures quoted in scenarios will have shifted even when nothing is broken.
 
 ---
 

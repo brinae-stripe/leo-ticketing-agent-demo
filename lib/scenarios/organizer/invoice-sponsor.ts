@@ -147,7 +147,14 @@ ORDER BY created DESC`;
       queries: [
         { label: 'Recent events and reach', sql: reachSql, result: reach },
         { label: 'Scanned admissions', note: 'The footfall number sponsors accept.', sql: admissionSql, result: admissions },
-        { label: 'Invoices already on this account', sql: existingSql, result: existing },
+        {
+          label: 'Invoices already on this account',
+          sql: existingSql,
+          result: existing,
+          // Asked to rule out a duplicate; nothing found is the good outcome,
+          // and the answer states it.
+          emptyIsExpected: true,
+        },
       ],
       table: {
         caption: 'Proposed invoice lines',

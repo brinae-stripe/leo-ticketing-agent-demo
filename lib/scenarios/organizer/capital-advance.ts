@@ -239,7 +239,14 @@ ORDER BY e.starts_at ASC`;
         { label: 'Your offer', sql: offerSql, result: offerRows },
         { label: 'Your sales rate', sql: rateSql, result: rate },
         { label: 'What it would fund', sql: upcomingSql, result: upcoming },
-        { label: 'Advances already drawn', sql: drawnSql, result: drawnRows },
+        {
+          label: 'Advances already drawn',
+          sql: drawnSql,
+          result: drawnRows,
+          // This branch is the no-advance-outstanding case, so the check coming
+          // back empty is what put us here.
+          emptyIsExpected: true,
+        },
       ],
       resolution: {
         headline: `${money(offered)} available for a ${money(fee)} fee, repaid over about ${paybackWeeks === 1 ? 'a week' : `${paybackWeeks} weeks`} out of ticket sales.`,

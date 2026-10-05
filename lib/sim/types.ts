@@ -284,6 +284,28 @@ export interface ServiceFeeLedgerRow {
   settled: boolean;
 }
 
+/**
+ * What an organizer owes a supplier.
+ *
+ * Platform-side, not a Stripe object — Marquee tracks it because event costs
+ * fall due before the ticket revenue for that event arrives, and that timing
+ * mismatch is what a funding gap actually is.
+ */
+export interface VendorBill {
+  id: string;
+  account_id: string;
+  /** The event the cost belongs to. */
+  event_id: string | null;
+  vendor_name: string;
+  description: string;
+  amount: number;
+  currency: string;
+  issued_at: number;
+  due_date: number;
+  status: 'open' | 'paid' | 'overdue';
+  paid_by_payment_id: string | null;
+}
+
 export interface SimDataset {
   accounts: Account[];
   events: PlatformEvent[];
@@ -304,6 +326,7 @@ export interface SimDataset {
   /** Single row: Marquee's own platform balance. */
   platform_balances: AccountBalance[];
   service_fee_ledger: ServiceFeeLedgerRow[];
+  vendor_bills: VendorBill[];
   radar_value_list_items: RadarValueListItem[];
   invoices: SimInvoice[];
   payment_links: SimPaymentLink[];

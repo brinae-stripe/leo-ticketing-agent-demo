@@ -188,6 +188,7 @@ export function sqlTables(data: SimDataset): Record<string, Row[]> {
     account_balances: data.account_balances as unknown as Row[],
     platform_balances: data.platform_balances as unknown as Row[],
     service_fee_ledger: data.service_fee_ledger as unknown as Row[],
+    vendor_bills: data.vendor_bills as unknown as Row[],
     radar_value_list_items: data.radar_value_list_items as unknown as Row[],
     invoices: flattenInvoices(data),
     payment_links: data.payment_links as unknown as Row[],

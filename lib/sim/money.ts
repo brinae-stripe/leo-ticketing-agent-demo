@@ -2,6 +2,7 @@ import { DAY, NOW, SCALE_FACTOR } from './constants';
 import type { SimIndex } from './dataset';
 import type {
   Account,
+  PlatformEvent,
   CapitalFinancingOffer,
   CapitalFinancingSummary,
   IssuingAuthorization,
@@ -433,5 +434,233 @@ export function platformMoney(data: SimDataset, index: SimIndex): PlatformMoney 
     cardApprovedTotal: cardProgram.reduce((sum, r) => sum + r.approvedSpend, 0),
     cardDeclinedTotal: cardProgram.reduce((sum, r) => sum + r.declinedAmount, 0),
     cardDeclinedCount: cardProgram.reduce((sum, r) => sum + r.declinedCount, 0),
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Funding outlook                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Will the money be there when the bill is?
+ *
+ * The projection walks obligations in due-date order against funds reachable on
+ * that date, and reports the first point where it does not add up.
+ *
+ * ## Why a gap exists at all
+ *
+ * Event costs are front-loaded; ticket revenue is not. And for an organizer who
+ * settles after the event, the platform is holding the revenue from the very
+ * event they are paying suppliers to stage — a cancelled show means refunding
+ * buyers out of money the organizer would otherwise have spent. So bills due
+ * before doors open have to come out of the last event's money, not this one's.
+ * That is the same hold the platform-side float page measures, seen from the
+ * organizer's side.
+ *
+ * ## What this can and cannot see
+ *
+ * Funds on Stripe: balance, stored balance, and ticket revenue arriving on
+ * Stripe. An organizer's working capital mostly sits in their own bank, which
+ * this dataset does not model and the agent has no access to. A shortfall here
+ * is a prompt to check, never a verdict, and the copy says so.
+ */
+
+/** Far enough out to act on, near enough to matter. */
+const SHORTFALL_HORIZON_DAYS = 21;
+
+/**
+ * Minimum shortfall, as a share of the obligation that triggers it.
+ *
+ * Being $200 short on a $400,000 deposit is a rounding difference in a forecast
+ * built on a trailing average, not a finding. This keeps the card off the page
+ * unless the number would actually change a decision.
+ */
+const SHORTFALL_MATERIALITY = 0.15;
+
+/** Days after an event that Marquee's settlement run debits the service fee. */
+const SERVICE_FEE_TERMS_DAYS = 4;
+
+/**
+ * Whole days between two instants, counted the way a calendar counts them.
+ *
+ * "Due in N days" sits next to a printed date, and the two have to agree. A
+ * fractional difference does not give you that: a bill due at midnight tomorrow
+ * is six hours away, which rounds to nought and reads as though it were already
+ * late. Dates render in UTC (see `format.ts`), so both instants are floored to
+ * UTC midnight and the difference taken between the days themselves.
+ */
+function calendarDaysUntil(ts: number): number {
+  const day = (at: number) => Math.floor(at / DAY);
+  return day(ts) - day(NOW);
+}
+
+export type ObligationKind = 'vendor_bill' | 'service_fee' | 'in_flight';
+
+export interface Obligation {
+  id: string;
+  kind: ObligationKind;
+  label: string;
+  counterparty: string | null;
+  amount: number;
+  dueDate: number;
+}
+
+export interface FundingShortfall {
+  obligation: Obligation;
+  dueInDays: number;
+  /** Funds projected to be reachable on the due date. */
+  projectedFunds: number;
+  /** Everything due on or before that date. */
+  cumulativeDue: number;
+  amount: number;
+  /** True when the gap is caused by revenue being held until the event. */
+  heldByPreEventHold: boolean;
+}
+
+export interface FundingOutlook {
+  nextEvent: PlatformEvent | null;
+  settlesPostEvent: boolean;
+  /** Stripe balance plus stored balance, at platform scale. */
+  reachableNow: number;
+  dailyRevenue: number;
+  obligations: Obligation[];
+  obligationsTotal: number;
+  shortfall: FundingShortfall | null;
+  /** Reachable funds divided by average daily outflow. */
+  bufferDays: number | null;
+}
+
+export function fundingOutlook(
+  data: SimDataset,
+  index: SimIndex,
+  accountId: string,
+): FundingOutlook | null {
+  const account = index.accountById.get(accountId);
+  if (!account) return null;
+
+  const balance = index.balanceById.get(accountId);
+  const financialAccount = data.treasury_financial_accounts.find(
+    (a) => a.account_id === accountId && a.status === 'open',
+  );
+
+  // Pending is excluded: it has not settled, so it is not reachable today.
+  const reachableNow =
+    Math.max(0, (balance?.available ?? 0) * SCALE_FACTOR) +
+    Math.max(0, (financialAccount?.balance_cash ?? 0) - (financialAccount?.balance_outbound_pending ?? 0));
+
+  const dailyRevenue = Number(account.metadata.trailing_volume) / 90;
+  const settlesPostEvent = account.metadata.settlement_mode === 'post_event';
+
+  const nextEvent =
+    (index.eventsByAccount.get(accountId) ?? [])
+      .filter((event) => event.status === 'on_sale' && event.starts_at > NOW)
+      .sort((a, b) => a.starts_at - b.starts_at)[0] ?? null;
+
+  /* ---------------------------- obligations ------------------------------ */
+
+  const obligations: Obligation[] = [];
+
+  for (const bill of data.vendor_bills) {
+    if (bill.account_id !== accountId || bill.status === 'paid') continue;
+    obligations.push({
+      id: bill.id,
+      kind: 'vendor_bill',
+      label: bill.description,
+      counterparty: bill.vendor_name,
+      amount: bill.amount,
+      dueDate: bill.due_date,
+    });
+  }
+
+  // Service fees are debited in the settlement run a few days after the event
+  // they belong to, not on the event date itself.
+  for (const row of data.service_fee_ledger) {
+    if (row.account_id !== accountId || row.settled) continue;
+    obligations.push({
+      id: `${row.account_id}:${row.event_id}`,
+      kind: 'service_fee',
+      label: 'Marquee service fee',
+      counterparty: null,
+      amount: row.fee_owed * SCALE_FACTOR,
+      dueDate: row.period_end + SERVICE_FEE_TERMS_DAYS * DAY,
+    });
+  }
+
+  // Already committed, so it reduces what is reachable from today.
+  for (const payment of data.treasury_outbound_payments) {
+    if (payment.account_id !== accountId || payment.status !== 'processing') continue;
+    obligations.push({
+      id: payment.id,
+      kind: 'in_flight',
+      label: payment.description,
+      counterparty: payment.payee_name,
+      amount: payment.amount,
+      dueDate: payment.created,
+    });
+  }
+
+  obligations.sort((a, b) => a.dueDate - b.dueDate);
+
+  /* ----------------------------- projection ------------------------------ */
+
+  const fundsAt = (ts: number) => {
+    if (settlesPostEvent && nextEvent && ts < nextEvent.starts_at) return reachableNow;
+    return reachableNow + dailyRevenue * Math.max(0, (ts - NOW) / DAY);
+  };
+
+  /**
+   * Only obligations still ahead of us.
+   *
+   * Something already past due is a collections problem, not a forecast, and
+   * reporting it as "due in 0 days" is simply wrong. Overdue service fees are
+   * the settlement page's business.
+   */
+  let cumulative = 0;
+  let shortfall: FundingShortfall | null = null;
+  for (const obligation of obligations) {
+    if (obligation.kind !== 'in_flight' && obligation.dueDate < NOW) continue;
+    cumulative += obligation.amount;
+    const dueInDays = calendarDaysUntil(obligation.dueDate);
+    if (dueInDays > SHORTFALL_HORIZON_DAYS) break;
+
+    const projectedFunds = fundsAt(obligation.dueDate);
+    const gap = cumulative - projectedFunds;
+    if (gap <= 0 || gap < obligation.amount * SHORTFALL_MATERIALITY) continue;
+
+    shortfall = {
+      obligation,
+      dueInDays: Math.max(0, dueInDays),
+      projectedFunds,
+      cumulativeDue: cumulative,
+      amount: gap,
+      heldByPreEventHold:
+        settlesPostEvent && nextEvent != null && obligation.dueDate < nextEvent.starts_at,
+    };
+    break;
+  }
+
+  /* ------------------------------- buffer -------------------------------- */
+
+  // Average daily outflow over the trailing quarter, from money that actually
+  // left: posted vendor payments and approved card spend.
+  const since = NOW - 90 * DAY;
+  const outflow =
+    data.treasury_outbound_payments
+      .filter((p) => p.account_id === accountId && p.status === 'posted' && p.created >= since)
+      .reduce((sum, p) => sum + p.amount, 0) +
+    data.issuing_authorizations
+      .filter((a) => a.account_id === accountId && a.approved && a.created >= since)
+      .reduce((sum, a) => sum + a.amount, 0);
+  const dailyOutflow = outflow / 90;
+
+  return {
+    nextEvent,
+    settlesPostEvent,
+    reachableNow,
+    dailyRevenue,
+    obligations,
+    obligationsTotal: obligations.reduce((sum, o) => sum + o.amount, 0),
+    shortfall,
+    bufferDays: dailyOutflow > 0 ? reachableNow / dailyOutflow : null,
   };
 }

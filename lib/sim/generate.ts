@@ -26,7 +26,8 @@ import {
   PLACE_WORDS,
   READER_DEVICE_TYPES,
 } from './catalog';
-import { generateEmbeddedFinance } from './embedded-finance';
+import { generateVendorBills } from './bills';
+import { generateEmbeddedFinance, isCapitalEligible } from './embedded-finance';
 import { Rng } from './rng';
 import type {
   Account,
@@ -1384,6 +1385,110 @@ export function generateDataset(seed: number = SEED): SimDataset {
     seed + 8,
   );
 
+  /**
+   * Supplier bills for the next event on every Capital-eligible account.
+   *
+   * Generated last because the stack is scaled against what the organizer can
+   * actually cover, and that includes any stored balance — which only exists
+   * once the embedded-finance pass above has run. Scoped to eligible organizers
+   * because the recommendation reading these is about financing a gap, and an
+   * organizer Stripe would not underwrite has no route from "you are short" to
+   * "here is what to do about it".
+   */
+  const storedCashByAccount = new Map(
+    embeddedFinance.treasury_financial_accounts.map((fa) => [
+      fa.account_id,
+      fa.balance_cash - fa.balance_outbound_pending,
+    ]),
+  );
+  const liquidityByAccount = new Map<string, number>();
+  const dailyRevenueByAccount = new Map<string, number>();
+  for (const account of accounts) {
+    const balance = account_balances.find((b) => b.account_id === account.id);
+    const stripeFunds = ((balance?.available ?? 0) + (balance?.pending ?? 0)) * SCALE_FACTOR;
+    liquidityByAccount.set(
+      account.id,
+      Math.max(0, stripeFunds) + (storedCashByAccount.get(account.id) ?? 0),
+    );
+    dailyRevenueByAccount.set(
+      account.id,
+      Number(account.metadata.trailing_volume) / 90,
+    );
+  }
+
+  // Obligations already on the books before any supplier bill: unsettled service
+  // fees Marquee will debit, and stored-balance payments already in flight.
+  const priorObligationsByAccount = new Map<string, number>();
+  for (const account of accounts) {
+    const fees = service_fee_ledger
+      .filter((row) => row.account_id === account.id && !row.settled)
+      .reduce((sum, row) => sum + row.fee_owed, 0);
+    priorObligationsByAccount.set(
+      account.id,
+      fees * SCALE_FACTOR + (storedCashByAccount.has(account.id)
+        ? (embeddedFinance.treasury_financial_accounts.find(
+            (fa) => fa.account_id === account.id,
+          )?.balance_outbound_pending ?? 0)
+        : 0),
+    );
+  }
+
+  // Which organizers end up short. Drawn from those with an upcoming event and a
+  // live or drawable financing offer, so the recommendation always has somewhere
+  // to send them.
+  const gapCandidates = accounts.filter((account) => {
+    if (account.metadata.next_event_date == null) return false;
+    // Post-event settlement is what creates the squeeze; on-charge organizers
+    // get their money as tickets sell and are rarely caught out by it.
+    if (account.metadata.settlement_mode !== 'post_event') return false;
+    // And there has to be somewhere to send them.
+    if (
+      !embeddedFinance.capital_financing_offers.some(
+        (offer) => offer.account_id === account.id,
+      )
+    ) {
+      return false;
+    }
+    // Thin buffer: under a month of revenue reachable. Echoes the Capital
+    // framing that SMBs run on roughly 27 days of cash.
+    const daily = Number(account.metadata.trailing_volume) / 90;
+    const liq = liquidityByAccount.get(account.id) ?? 0;
+    return daily > 0 && liq / daily < 30;
+  });
+  const gapAccountIds = new Set(
+    rngFixture
+      .sample(gapCandidates, FIXTURES.organizersWithFundingGap)
+      .map((account) => account.id),
+  );
+
+  const vendor_bills = generateVendorBills(
+    {
+      events,
+      paidChargesByEvent,
+      accountIds: new Set(
+        accounts
+          .filter((account) =>
+            isCapitalEligible({
+              account,
+              trailingVolume: trailingVolumeByAccount.get(account.id) ?? 0,
+              paidCharges: paidChargeCountByAccount.get(account.id) ?? 0,
+            }),
+          )
+          .map((account) => account.id),
+      ),
+      liquidityByAccount,
+      dailyRevenueByAccount,
+      priorObligationsByAccount,
+      gapAccountIds,
+      settlesPostEvent: new Set(
+        accounts
+          .filter((account) => account.metadata.settlement_mode === 'post_event')
+          .map((account) => account.id),
+      ),
+    },
+    seed + 9,
+  );
+
   return {
     accounts,
     events,
@@ -1403,6 +1508,7 @@ export function generateDataset(seed: number = SEED): SimDataset {
     account_balances,
     platform_balances,
     service_fee_ledger,
+    vendor_bills,
     radar_value_list_items: [],
     invoices: [],
     payment_links: [],

@@ -51,6 +51,7 @@ export const TABLE_DOCS: TableDoc[] = [
   { name: 'events', source: 'platform', description: "Marquee's own event catalogue. Not a Stripe object." },
   { name: 'admissions', source: 'platform', description: 'Gate scans. Doubles as dispute evidence.' },
   { name: 'service_fee_ledger', source: 'platform', description: 'Service fees accrued per event and whether collected.' },
+  { name: 'vendor_bills', source: 'platform', description: "What an organizer owes suppliers for an upcoming event, with due dates. Not a Stripe object." },
   { name: 'platform_requests', source: 'platform', description: 'Organizer asks that need a human at Marquee to approve.' },
 ];
 
@@ -65,8 +66,9 @@ export const TABLE_SOURCE_LABELS: Record<TableSource, string> = {
 };
 
 /**
- * Two places the simulated schema departs from Sigma, both because a browser
- * SQL engine has no JSON operators. Documented rather than hidden.
+ * Where the simulated schema departs from Sigma — mostly because a browser SQL
+ * engine has no JSON operators or array aggregates, once because the table has
+ * no Stripe counterpart at all. Documented rather than hidden.
  */
 export const SCHEMA_CAVEATS = [
   {
@@ -93,5 +95,10 @@ export const SCHEMA_CAVEATS = [
     title: 'embedded finance is not sampled',
     detail:
       "The Capital, Treasury and Issuing tables hold one row per organizer, per financial account, per card — there is nothing to sample, so they are not. Their amounts are sized off the organizer's real volume rather than off the sampled rows, which means a $600,000 financing offer sits next to an organizer whose charge rows only add up to $40,000. Scenarios that mix the two multiply the sampled side by the scale factor in the SQL, where you can see it.",
+  },
+  {
+    title: 'vendor_bills has no Stripe counterpart',
+    detail:
+      "Every other table maps to something Stripe returns. vendor_bills does not — it is platform data, and it is here because you cannot flag a funding gap without knowing what is actually due and when. Stripe can see a balance and the ticket revenue arriving; what it cannot see is the venue invoice on the organizer's desk. A ticketing platform can, which is the whole reason the platform is the right place to notice. Any forecast built on it is also scoped to money on Stripe: an organizer's working capital mostly sits in their own bank, which nothing here models, so a shortfall is a prompt to check rather than a verdict.",
   },
 ];
