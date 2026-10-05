@@ -1327,31 +1327,30 @@ export function generateDataset(seed: number = SEED): SimDataset {
   // A second pass over the finished payments data, so eligibility and balances
   // are derived from what actually settled rather than invented alongside it.
   /**
-   * Trailing 90-day volume, corrected for the one event that is not sampled.
+   * Trailing 90-day volume per organizer — their own, complete, unscaled.
    *
-   * Every other charge row stands in for 100 real payments, so embedded finance
-   * scales them by SCALE_FACTOR to get real dollars. The cancellation event is
-   * the exception: it carries its full charge list so the batch refund runs
-   * against real rows, which means scaling it too would overstate that organizer
-   * by exactly 100x — and since it is ~9% of all charge rows, it would hand the
-   * largest financing offer on the platform to an artefact of a test fixture.
+   * Organizers are what the dataset samples, not each organizer's charges (see
+   * SCALE_FACTOR), so this is simply the sum of what they took. No correction is
+   * applied to any event.
    *
-   * So the sampled contribution is divided out for that event. The value stored
-   * here stays in sampled units, because callers multiply by SCALE_FACTOR.
+   * There used to be one. While charges were the sampled axis, the big fixture
+   * event carried its full charge list while every other row stood in for a
+   * hundred, so that event's contribution had to be divided back down or its
+   * organizer's volume was overstated a hundredfold. Sampling organizers instead
+   * makes every event's charge list complete, the fixture included, and the
+   * special case disappears rather than being fixed — it only ever existed to
+   * patch over the inconsistency.
    */
   const trailingVolumeByAccount = new Map<string, number>();
   const paidChargeCountByAccount = new Map<string, number>();
   const trailingStart = NOW - 90 * DAY;
   for (const charge of successfulCharges) {
     if (charge.created < trailingStart) continue;
-    const net = charge.amount - charge.amount_refunded;
-    const weight = charge.metadata.event_id === cancellationEvent.id ? 1 / SCALE_FACTOR : 1;
     trailingVolumeByAccount.set(
       charge.account_id,
-      (trailingVolumeByAccount.get(charge.account_id) ?? 0) + net * weight,
+      (trailingVolumeByAccount.get(charge.account_id) ?? 0) +
+        (charge.amount - charge.amount_refunded),
     );
-    // Unweighted: this is an activity and tenure signal, not an amount, so the
-    // sampling correction does not apply to it.
     paidChargeCountByAccount.set(
       charge.account_id,
       (paidChargeCountByAccount.get(charge.account_id) ?? 0) + 1,
@@ -1367,11 +1366,12 @@ export function generateDataset(seed: number = SEED): SimDataset {
     }
   }
 
-  // Publish the corrected figure on each account so nothing downstream has to
-  // redo the scaling or remember the fixture exception.
+  // Published on the account so every consumer reads one authoritative figure
+  // rather than re-deriving it.
   for (const account of accounts) {
-    const sampled = trailingVolumeByAccount.get(account.id) ?? 0;
-    account.metadata.trailing_volume = String(Math.round(sampled * SCALE_FACTOR));
+    account.metadata.trailing_volume = String(
+      Math.round(trailingVolumeByAccount.get(account.id) ?? 0),
+    );
   }
 
   const embeddedFinance = generateEmbeddedFinance(
@@ -1388,79 +1388,17 @@ export function generateDataset(seed: number = SEED): SimDataset {
   /**
    * Supplier bills for the next event on every Capital-eligible account.
    *
-   * Generated last because the stack is scaled against what the organizer can
-   * actually cover, and that includes any stored balance — which only exists
-   * once the embedded-finance pass above has run. Scoped to eligible organizers
-   * because the recommendation reading these is about financing a gap, and an
-   * organizer Stripe would not underwrite has no route from "you are short" to
-   * "here is what to do about it".
+   * Scoped to eligible organizers because the recommendation reading these is
+   * about financing a gap, and an organizer Stripe would not underwrite has no
+   * route from "you are short" to "here is what to do about it".
+   *
+   * Nothing about the organizer's balance is passed in. Costs are sized off the
+   * event, and whether that leaves them short is a question for whoever reads
+   * the data — `fundingOutlook` works it out at render time. Engineering the
+   * answer into the bills was how this worked first, and it was wrong in both
+   * directions: it needed the balance to exist before the bills, and it quietly
+   * guaranteed the conclusion the demo then presented as a finding.
    */
-  const storedCashByAccount = new Map(
-    embeddedFinance.treasury_financial_accounts.map((fa) => [
-      fa.account_id,
-      fa.balance_cash - fa.balance_outbound_pending,
-    ]),
-  );
-  const liquidityByAccount = new Map<string, number>();
-  const dailyRevenueByAccount = new Map<string, number>();
-  for (const account of accounts) {
-    const balance = account_balances.find((b) => b.account_id === account.id);
-    const stripeFunds = ((balance?.available ?? 0) + (balance?.pending ?? 0)) * SCALE_FACTOR;
-    liquidityByAccount.set(
-      account.id,
-      Math.max(0, stripeFunds) + (storedCashByAccount.get(account.id) ?? 0),
-    );
-    dailyRevenueByAccount.set(
-      account.id,
-      Number(account.metadata.trailing_volume) / 90,
-    );
-  }
-
-  // Obligations already on the books before any supplier bill: unsettled service
-  // fees Marquee will debit, and stored-balance payments already in flight.
-  const priorObligationsByAccount = new Map<string, number>();
-  for (const account of accounts) {
-    const fees = service_fee_ledger
-      .filter((row) => row.account_id === account.id && !row.settled)
-      .reduce((sum, row) => sum + row.fee_owed, 0);
-    priorObligationsByAccount.set(
-      account.id,
-      fees * SCALE_FACTOR + (storedCashByAccount.has(account.id)
-        ? (embeddedFinance.treasury_financial_accounts.find(
-            (fa) => fa.account_id === account.id,
-          )?.balance_outbound_pending ?? 0)
-        : 0),
-    );
-  }
-
-  // Which organizers end up short. Drawn from those with an upcoming event and a
-  // live or drawable financing offer, so the recommendation always has somewhere
-  // to send them.
-  const gapCandidates = accounts.filter((account) => {
-    if (account.metadata.next_event_date == null) return false;
-    // Post-event settlement is what creates the squeeze; on-charge organizers
-    // get their money as tickets sell and are rarely caught out by it.
-    if (account.metadata.settlement_mode !== 'post_event') return false;
-    // And there has to be somewhere to send them.
-    if (
-      !embeddedFinance.capital_financing_offers.some(
-        (offer) => offer.account_id === account.id,
-      )
-    ) {
-      return false;
-    }
-    // Thin buffer: under a month of revenue reachable. Echoes the Capital
-    // framing that SMBs run on roughly 27 days of cash.
-    const daily = Number(account.metadata.trailing_volume) / 90;
-    const liq = liquidityByAccount.get(account.id) ?? 0;
-    return daily > 0 && liq / daily < 30;
-  });
-  const gapAccountIds = new Set(
-    rngFixture
-      .sample(gapCandidates, FIXTURES.organizersWithFundingGap)
-      .map((account) => account.id),
-  );
-
   const vendor_bills = generateVendorBills(
     {
       events,
@@ -1474,15 +1412,6 @@ export function generateDataset(seed: number = SEED): SimDataset {
               paidCharges: paidChargeCountByAccount.get(account.id) ?? 0,
             }),
           )
-          .map((account) => account.id),
-      ),
-      liquidityByAccount,
-      dailyRevenueByAccount,
-      priorObligationsByAccount,
-      gapAccountIds,
-      settlesPostEvent: new Set(
-        accounts
-          .filter((account) => account.metadata.settlement_mode === 'post_event')
           .map((account) => account.id),
       ),
     },

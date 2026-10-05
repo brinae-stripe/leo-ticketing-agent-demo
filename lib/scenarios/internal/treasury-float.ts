@@ -56,14 +56,15 @@ export const treasuryFloat: Scenario = {
     const floatSql = sql`
 -- The float, organizer by organizer.
 -- Only organizers with an event still ahead of them: money held against an event
--- that already happened is a settlement problem, not a float. Balances are
--- scaled to real dollars because they derive from the 1:100 charge sample.
+-- that already happened is a settlement problem, not a float. Each organizer's
+-- balance is their own and is not scaled — the 1:100 sampling is of organizers,
+-- so the extrapolation to the whole platform happens once, on the total.
 SELECT
   a.id AS account_id,
   a.business_profile_name AS organizer,
-  (b.available + b.pending) * ${SCALE_FACTOR} AS held,
-  b.available * ${SCALE_FACTOR} AS available,
-  b.pending * ${SCALE_FACTOR} AS pending,
+  b.available + b.pending AS held,
+  b.available,
+  b.pending,
   a.metadata_next_event_date AS next_event,
   a.payout_schedule_interval,
   a.metadata_settlement_mode AS settlement_mode
@@ -83,7 +84,7 @@ SELECT
   e.account_id,
   e.starts_at,
   COUNT(*) AS orders,
-  SUM(c.amount - c.amount_refunded) * ${SCALE_FACTOR} AS gross,
+  SUM(c.amount - c.amount_refunded) AS gross,
   ROUND(AVG(e.starts_at - c.created) / ${DAY}) AS avg_days_held
 FROM charges c
 JOIN events e ON e.id = c.metadata_event_id
@@ -155,7 +156,7 @@ ORDER BY total_amount DESC`;
     const vendorCount = vendor.rows.reduce((s, r) => s + num(r, 'payments'), 0);
 
     const answer = [
-      `${money(totalHeld)} across ${plural(organizerCount, 'organizer')} with an event still to come. That is the pre-event float — money that has arrived from ticket buyers and will not be released until the doors close.`,
+      `${money(totalHeld)} across ${plural(organizerCount, 'organizer')} with an event still to come — and since these organizers are a 1:100 sample of the platform's, about ${money(totalHeld * SCALE_FACTOR)} platform-wide. That is the pre-event float: money that has arrived from ticket buyers and will not be released until the doors close.`,
       `Weighted by volume it sits for about ${Math.round(avgDaysHeld)} days. ${longestHold ? `The long tail is worse than the average: ${str(longestHold, 'event_name')} is holding money for ${count(num(longestHold, 'avg_days_held'))} days on average, and does not open until ${longDate(num(longestHold, 'starts_at'))}.` : ''} The hold is not an accident or a Stripe constraint — it is deliberate, because a cancelled show means refunding buyers from funds the organizer has not yet spent.`,
       existing.rows.length > 0
         ? `${plural(existing.rows.length, 'organizer')} already hold${existing.rows.length === 1 ? 's' : ''} a stored balance rather than waiting on a payout, ${money(existingCash)} between them. Over the last 90 days they made ${plural(vendorCount, 'payment')} out of it totalling ${money(vendorTotal)} — vendor money going straight out, instead of a payout to their own bank and then a wire from there.`

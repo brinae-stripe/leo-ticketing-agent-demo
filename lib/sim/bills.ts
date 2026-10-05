@@ -1,4 +1,4 @@
-import { DAY, NOW, SCALE_FACTOR } from './constants';
+import { DAY, NOW } from './constants';
 import { Rng } from './rng';
 import type { Charge, PlatformEvent, VendorBill } from './types';
 
@@ -64,51 +64,27 @@ export interface BillsInput {
   paidChargesByEvent: Map<string, Charge[]>;
   /** Account ids that should get bills at all. */
   accountIds: Set<string>;
-  /**
-   * Everything the organizer can currently reach, at platform scale: Stripe
-   * balance plus any stored balance.
-   */
-  liquidityByAccount: Map<string, number>;
-  /** Platform-scale ticket revenue per day, from trailing volume. */
-  dailyRevenueByAccount: Map<string, number>;
-  /**
-   * True when the organizer settles after the event rather than at charge time.
-   *
-   * This is the crux of the whole gap. Marquee does not release funds for an
-   * event until the doors have closed — a cancelled show means refunding buyers
-   * out of money the organizer would otherwise have spent. So for a post-event
-   * organizer, the ticket revenue from the very event they are paying suppliers
-   * to stage is *not* available to pay those suppliers with. Bills due before
-   * doors open have to come out of the previous event's money.
-   */
-  settlesPostEvent: Set<string>;
-  /** Obligations already on the books before bills: fees owed, payments in flight. */
-  priorObligationsByAccount: Map<string, number>;
-  /**
-   * Accounts that should end up short. Everyone else is scaled to stay covered,
-   * so the recommendation is selective rather than universal.
-   */
-  gapAccountIds: Set<string>;
 }
 
 /**
- * What "coverage" means here, because it is narrower than it sounds.
+ * How expensive this organizer's production is, relative to the cost shares
+ * above.
  *
- * Funds *on Stripe* — balance, stored balance, and ticket revenue arriving on
- * Stripe — against obligations due by a date. An organizer's working capital
- * mostly sits in their own bank, which this dataset does not model and the agent
- * cannot see. A shortfall against this number is a prompt to check, not a
- * verdict, and the recommendation reading it says exactly that.
+ * A real spread, not a knob: a promoter who owns their staging and runs a
+ * volunteer gate stages the same gross for a fraction of what a festival
+ * trucking in a built site pays. This is the only per-organizer variation
+ * applied, and it is why some organizers come up short and others do not.
  *
- * For gap accounts the stack is scaled so the shortfall at the anchor bill is
- * this fraction of projected funds. For everyone else, so obligations stay this
- * fraction below funds at every due date.
+ * Bills used to be solved backwards instead — scaled until the shortfall at a
+ * chosen bill hit a target fraction of projected funds. That worked while every
+ * figure was multiplied by a hundred and collapsed the moment they were not: an
+ * organizer's Stripe balance is near zero between weekly payouts, so solving
+ * against it produced $300 venue deposits and a "funding gap" of $1,283 sitting
+ * next to the offer of a $51,000 advance. Sizing costs off the event and letting
+ * the shortfall fall out is both simpler and the only version that survives
+ * someone checking it.
  */
-const GAP_SHORTFALL_SHARE = [0.18, 0.55] as const;
-const COVERED_HEADROOM = [0.45, 0.8] as const;
-
-/** Window the anchor bill falls in: close enough to matter, far enough to act on. */
-const ANCHOR_WINDOW_DAYS = [6, 20] as const;
+const COST_INTENSITY = [0.7, 1.4] as const;
 
 /**
  * How close a bill can be to its due date and still be sitting unpaid.
@@ -120,17 +96,6 @@ const ANCHOR_WINDOW_DAYS = [6, 20] as const;
  * recorded as paid, the same as anything already past due.
  */
 const MIN_OPEN_LEAD_DAYS = 3;
-
-/**
- * Bound on how far scaling may move a line item.
- *
- * The share bands above are the realistic cost shape; without a bound, hitting a
- * funding target overrides them and produces a "venue deposit" worth 40% of an
- * event's gross. Wide, because event cost structures genuinely are — a touring
- * festival carrying a talent guarantee and a holiday light installation renting a
- * field have little in common beyond both being called an event.
- */
-const SCALE_CLAMP = [0.25, 2.2] as const;
 
 /**
  * Bills for the next event on each account.
@@ -154,89 +119,71 @@ export function generateVendorBills(input: BillsInput, seed: number): VendorBill
     }
   }
 
-  for (const [accountId, event] of nextByAccount) {
-    // Expected gross at platform scale. Tickets are still selling, so scale the
-    // run rate up to a full house rather than using what has sold so far —
-    // production is budgeted against the forecast, not against receipts.
-    const sold = (input.paidChargesByEvent.get(event.id) ?? []).reduce(
+  // What this organizer's events typically gross, from the ones that have
+  // finished. This is the budget line a production is actually costed against:
+  // an organizer whose last three shows each took $50,000 books the next one
+  // around $50,000.
+  //
+  // Not what the upcoming event has sold so far. That was the first version and
+  // it reads plausibly until you notice an event that went on sale last week has
+  // taken almost nothing, so its costs came out near zero and the venue deposit
+  // on a real festival landed at $300. Sales-to-date measures how far through
+  // the on-sale you are, not how big the event is.
+  const typicalGross = new Map<string, number>();
+  const grossByAccount = new Map<string, number[]>();
+  for (const event of input.events) {
+    if (event.status !== 'completed') continue;
+    const gross = (input.paidChargesByEvent.get(event.id) ?? []).reduce(
       (sum, charge) => sum + (charge.amount - charge.amount_refunded),
       0,
     );
-    const expectedGross = sold * SCALE_FACTOR * rng.between(1.15, 1.7);
-    if (expectedGross < 500_000) continue;
+    if (gross <= 0) continue;
+    const list = grossByAccount.get(event.account_id) ?? [];
+    list.push(gross);
+    grossByAccount.set(event.account_id, list);
+  }
+  for (const [accountId, list] of grossByAccount) {
+    typicalGross.set(accountId, list.reduce((a, b) => a + b, 0) / list.length);
+  }
+
+  for (const [accountId, event] of nextByAccount) {
+    const baseline = typicalGross.get(accountId);
+    const soldSoFar = (input.paidChargesByEvent.get(event.id) ?? []).reduce(
+      (sum, charge) => sum + (charge.amount - charge.amount_refunded),
+      0,
+    );
+    // An organizer with no completed event has no history to budget from, so
+    // fall back to the on-sale run rate — the weakest signal, used only where
+    // there is nothing better.
+    const expectedGross =
+      baseline != null
+        ? baseline * rng.between(0.9, 1.45)
+        : soldSoFar * rng.between(1.5, 2.2);
+    if (expectedGross < 25_000) continue;
 
     // Four to six cost lines per event, not all seven — a comedy club does not
     // book a talent guarantee and a staging contract for the same night.
+    const intensity = rng.between(...COST_INTENSITY);
     const draft = rng.sample(COST_LINES, rng.int(4, 6)).map((line) => {
       const dueBefore = rng.int(...line.dueBefore);
       const dueDate = event.starts_at - dueBefore * DAY;
       return {
         description: line.description,
-        raw: expectedGross * rng.between(...line.share),
+        raw: expectedGross * rng.between(...line.share) * intensity,
         dueDate,
         issuedAt: dueDate - rng.int(14, 45) * DAY,
         vendor: rng.pick(line.vendors),
       };
     });
 
-    /* --------------------- scale to a funding outcome --------------------- */
-
     const stillOpenFrom = NOW + MIN_OPEN_LEAD_DAYS * DAY;
-    const openDraft = draft.filter((line) => line.dueDate >= stillOpenFrom).sort(
-      (a, b) => a.dueDate - b.dueDate,
-    );
-    if (openDraft.length === 0) continue;
-
-    const liquidity = input.liquidityByAccount.get(accountId) ?? 0;
-    const daily = input.dailyRevenueByAccount.get(accountId) ?? 0;
-    const prior = input.priorObligationsByAccount.get(accountId) ?? 0;
-    const heldUntilDoors = input.settlesPostEvent.has(accountId);
-
-    /**
-     * Funds reachable by a date.
-     *
-     * For a post-event organizer, nothing earned on the upcoming event counts
-     * before doors open, because the platform is holding it. That is not a
-     * modelling shortcut — it is the same hold the float scenario measures, seen
-     * from the organizer's side of it.
-     */
-    const fundsAt = (ts: number) => {
-      if (heldUntilDoors && ts < event.starts_at) return liquidity;
-      return liquidity + daily * Math.max(0, (ts - NOW) / DAY);
-    };
-
-    // The bill the recommendation will point at: the first one far enough out to
-    // do something about and near enough to matter.
-    const anchor =
-      openDraft.find((line) => {
-        const days = (line.dueDate - NOW) / DAY;
-        return days >= ANCHOR_WINDOW_DAYS[0] && days <= ANCHOR_WINDOW_DAYS[1];
-      }) ?? openDraft[openDraft.length - 1];
-
-    const throughAnchor = openDraft
-      .filter((line) => line.dueDate <= anchor.dueDate)
-      .reduce((sum, line) => sum + line.raw, 0);
-    if (throughAnchor <= 0) continue;
-
-    let scale: number;
-    if (input.gapAccountIds.has(accountId)) {
-      // Solve for a definite shortfall at the anchor date.
-      const target =
-        fundsAt(anchor.dueDate) * (1 + rng.between(...GAP_SHORTFALL_SHARE)) - prior;
-      scale = target / throughAnchor;
-    } else {
-      // Solve so the last due date still has headroom, which keeps every date
-      // before it covered too.
-      const last = openDraft[openDraft.length - 1];
-      const throughLast = openDraft.reduce((sum, line) => sum + line.raw, 0);
-      const target = fundsAt(last.dueDate) * rng.between(...COVERED_HEADROOM) - prior;
-      scale = target / throughLast;
-    }
-    scale = Math.min(SCALE_CLAMP[1], Math.max(SCALE_CLAMP[0], scale));
 
     for (const line of draft) {
-      const amount = Math.round((line.raw * scale) / 10_000) * 10_000;
-      if (amount < 100_000) continue;
+      // Round to $50 and drop anything under $250 — a supplier invoice is a
+      // round-ish number, but rounding to $10,000 as this did while amounts were
+      // a hundred times larger now quantises a $3,000 print bill into nothing.
+      const amount = Math.round(line.raw / 5_000) * 5_000;
+      if (amount < 25_000) continue;
 
       // Anything already due, or due inside the next few days, was paid on
       // time. Organizers that habitually miss supplier dates are a different

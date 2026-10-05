@@ -87,14 +87,9 @@ export const SCHEMA_CAVEATS = [
       'Every organizer is US-based and every charge settles in USD, so cross-currency settlement is out of scope. The international signal lives in card_country — the buyer\'s issuing country — which is what the fee and conversion scenarios actually need.',
   },
   {
-    title: 'the sample is not uniform',
+    title: 'organizers are the sample, not payments',
     detail:
-      'Rates are read off a 1:100 sample, but the event used by the cancellation scenario carries its full charge list so the batch refund runs end to end against real rows rather than a fortieth of them.',
-  },
-  {
-    title: 'embedded finance is not sampled',
-    detail:
-      "The Capital, Treasury and Issuing tables hold one row per organizer, per financial account, per card — there is nothing to sample, so they are not. Their amounts are sized off the organizer's real volume rather than off the sampled rows, which means a $600,000 financing offer sits next to an organizer whose charge rows only add up to $40,000. Scenarios that mix the two multiply the sampled side by the scale factor in the SQL, where you can see it.",
+      "The 70 accounts here stand in for roughly 7,000, and each one's history is complete: a $1.35M-a-year food festival really did take those 961 payments. So an organizer's own figures are never scaled — their volume, balance, financing offer, supplier bills and card limits are real as they stand, and a Capital offer read next to that organizer's charge rows agrees with them. Only totals across every organizer are multiplied by the scale factor, and the UI says so where it does. Sampling each organizer's payments instead would mean multiplying every per-organizer figure by 100, which turns that same festival into a $134M operation with a $9.7M advance — individually defensible, collectively absurd.",
   },
   {
     title: 'vendor_bills has no Stripe counterpart',

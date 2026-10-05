@@ -1,4 +1,4 @@
-import { DAY, NOW, SCALE_FACTOR } from './constants';
+import { DAY, NOW } from './constants';
 import type { SimIndex } from './dataset';
 import type {
   Account,
@@ -405,15 +405,22 @@ export function platformMoney(data: SimDataset, index: SimIndex): PlatformMoney 
     })
     .sort((a, b) => b.approvedSpend - a.approvedSpend);
 
-  // The float: balances held for organizers with an event still to come, at
-  // platform scale. Same definition the treasury_float scenario uses.
+  // The float: balances held for organizers with an event still to come.
+  //
+  // Not scaled, because of what it is rendered next to — the count of organizers
+  // behind it, the stored balances of the ones enrolled, and a list of named
+  // accounts. Multiplying only the money gave a card reading "$41,644,778 across
+  // 58 organizers", which is a platform-scale total propped against a
+  // cohort-scale count and implies an average float of $718,000 an organizer.
+  // The treasury_float scenario states the platform extrapolation explicitly,
+  // which is the right place for it.
   let floatTotal = 0;
   let floatOrganizers = 0;
   for (const balance of data.account_balances) {
     const account = index.accountById.get(balance.account_id);
     if (!account?.metadata.next_event_date) continue;
     if (balance.available <= 0) continue;
-    floatTotal += (balance.available + balance.pending) * SCALE_FACTOR;
+    floatTotal += balance.available + balance.pending;
     floatOrganizers += 1;
   }
 
@@ -477,6 +484,18 @@ const SHORTFALL_HORIZON_DAYS = 21;
  */
 const SHORTFALL_MATERIALITY = 0.15;
 
+/**
+ * Smallest gap worth a card, in cents.
+ *
+ * The proportional test alone passes a $550 shortfall on an $800 print bill,
+ * which is true and useless: it is not a financing decision, and putting it next
+ * to the offer of a $7,000 advance makes the agent look like it cannot judge
+ * scale. Organizers on this platform range from a comedy room taking $64,000 a
+ * year to a festival taking $9.5M, so the test has to be both — a gap has to be
+ * a real share of the bill *and* big enough to be worth someone's afternoon.
+ */
+const SHORTFALL_FLOOR = 1_000_00;
+
 /** Days after an event that Marquee's settlement run debits the service fee. */
 const SERVICE_FEE_TERMS_DAYS = 4;
 
@@ -494,7 +513,7 @@ function calendarDaysUntil(ts: number): number {
   return day(ts) - day(NOW);
 }
 
-export type ObligationKind = 'vendor_bill' | 'service_fee' | 'in_flight';
+export type ObligationKind = 'vendor_bill' | 'service_fee';
 
 export interface Obligation {
   id: string;
@@ -506,7 +525,22 @@ export interface Obligation {
 }
 
 export interface FundingShortfall {
+  /**
+   * The obligation whose due date the projection first falls short at.
+   *
+   * Not necessarily the one that caused it. Bills are walked in date order
+   * against a running total, so a $250 print bill can be the row that tips a
+   * stack built mostly by a venue deposit a week earlier. `obligations` below is
+   * the whole stack due by this date, and `largest` is the one worth naming —
+   * headlining the tipping row produced cards reading "$500 is due in 16 days —
+   * funds come up $1,470 short", where the shortfall exceeds the bill it is
+   * supposedly about.
+   */
   obligation: Obligation;
+  /** Everything due on or before `obligation.dueDate`, in date order. */
+  obligations: Obligation[];
+  /** The biggest of those, which is the one a person would act on. */
+  largest: Obligation;
   dueInDays: number;
   /** Funds projected to be reachable on the due date. */
   projectedFunds: number;
@@ -545,7 +579,7 @@ export function fundingOutlook(
 
   // Pending is excluded: it has not settled, so it is not reachable today.
   const reachableNow =
-    Math.max(0, (balance?.available ?? 0) * SCALE_FACTOR) +
+    Math.max(0, balance?.available ?? 0) +
     Math.max(0, (financialAccount?.balance_cash ?? 0) - (financialAccount?.balance_outbound_pending ?? 0));
 
   const dailyRevenue = Number(account.metadata.trailing_volume) / 90;
@@ -581,23 +615,19 @@ export function fundingOutlook(
       kind: 'service_fee',
       label: 'Marquee service fee',
       counterparty: null,
-      amount: row.fee_owed * SCALE_FACTOR,
+      amount: row.fee_owed,
       dueDate: row.period_end + SERVICE_FEE_TERMS_DAYS * DAY,
     });
   }
 
-  // Already committed, so it reduces what is reachable from today.
-  for (const payment of data.treasury_outbound_payments) {
-    if (payment.account_id !== accountId || payment.status !== 'processing') continue;
-    obligations.push({
-      id: payment.id,
-      kind: 'in_flight',
-      label: payment.description,
-      counterparty: payment.payee_name,
-      amount: payment.amount,
-      dueDate: payment.created,
-    });
-  }
+  // Payments already in flight are deliberately *not* obligations.
+  //
+  // They are the same money as `balance_outbound_pending`, which `reachableNow`
+  // above has already subtracted, so listing them here subtracted them twice.
+  // That is what produced the card reporting a staging payment "due in 0 days"
+  // against an organizer who was not in fact short: the gap was the double
+  // count. Money leaving reduces what you can reach; it is not also a bill
+  // waiting to be paid.
 
   obligations.sort((a, b) => a.dueDate - b.dueDate);
 
@@ -615,20 +645,27 @@ export function fundingOutlook(
    * reporting it as "due in 0 days" is simply wrong. Overdue service fees are
    * the settlement page's business.
    */
+  const upcoming = obligations.filter((o) => o.dueDate >= NOW);
   let cumulative = 0;
   let shortfall: FundingShortfall | null = null;
-  for (const obligation of obligations) {
-    if (obligation.kind !== 'in_flight' && obligation.dueDate < NOW) continue;
+  for (const [index, obligation] of upcoming.entries()) {
     cumulative += obligation.amount;
     const dueInDays = calendarDaysUntil(obligation.dueDate);
     if (dueInDays > SHORTFALL_HORIZON_DAYS) break;
 
     const projectedFunds = fundsAt(obligation.dueDate);
     const gap = cumulative - projectedFunds;
-    if (gap <= 0 || gap < obligation.amount * SHORTFALL_MATERIALITY) continue;
+    if (gap <= 0) continue;
+    if (gap < SHORTFALL_FLOOR) continue;
+    // Measured against the whole stack due by this date, not just the row that
+    // tipped it — that is what the organizer has to find the money for.
+    if (gap < cumulative * SHORTFALL_MATERIALITY) continue;
 
+    const stack = upcoming.slice(0, index + 1);
     shortfall = {
       obligation,
+      obligations: stack,
+      largest: stack.reduce((a, b) => (b.amount > a.amount ? b : a)),
       dueInDays: Math.max(0, dueInDays),
       projectedFunds,
       cumulativeDue: cumulative,

@@ -1,5 +1,4 @@
 import { CAPITAL_ELIGIBILITY } from '../../sim/embedded-finance';
-import { SCALE_FACTOR } from '../../sim/constants';
 import { longDate } from '../../sim/format';
 import { dashboardOnly, ef } from '../../stripe-sim';
 import { money, num, percent, plural, sql, str, within, T } from '../helpers';
@@ -14,11 +13,9 @@ import type { ActionSpec, Scenario, ScenarioResult } from '../types';
  * platform records that it surfaced it, and an offer nobody sees expires on
  * schedule regardless. That is revenue decaying in a table, on a clock.
  *
- * Note the `* ${SCALE_FACTOR}` in the first query. `charges` is a 1:100 sample,
- * so trailing volume off the sampled rows has to be scaled before it can be
- * compared to a threshold denominated in real dollars. It is done in the SQL
- * rather than in TypeScript so that anyone reading the query on screen can see
- * it happening instead of wondering why the numbers do not tie.
+ * Volume here needs no scaling. The 1:100 sampling is of organizers, not of each
+ * organizer's charges, so an organizer's trailing volume is simply theirs and
+ * compares directly against a threshold in real dollars.
  */
 export const capitalEligibility: Scenario = {
   id: 'capital_eligibility',
@@ -56,10 +53,9 @@ export const capitalEligibility: Scenario = {
 -- who cannot be paid out cannot be advanced against either: there is nothing to
 -- withhold repayment from.
 --
--- metadata_trailing_volume is the platform's own field, already at real-dollar
--- scale. The charge rows are a 1:100 sample and one fixture event is not sampled
--- at all, so deriving this here would mean getting both corrections right in
--- every query that needs it. It is computed once, on the account.
+-- metadata_trailing_volume is the platform's own field: the organizer's own
+-- trailing 90-day net volume, unscaled. Computed once on the account so every
+-- query reads the same figure rather than re-deriving it from charge rows.
 SELECT
   a.id AS account_id,
   a.business_profile_name AS organizer,

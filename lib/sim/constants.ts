@@ -4,13 +4,32 @@
 export const SEED = 20260925;
 
 /**
- * The narrative platform processes ~2.4M payment attempts per quarter. Holding
- * 2.4M rows in a browser tab is not realistic, so the seeded dataset is a
- * 1:100 sample: 24,000 charge rows stand in for 2.4M attempts.
+ * The narrative platform processes ~2.4M payment attempts per quarter across
+ * thousands of organizers. Holding that in a browser tab is not realistic, so
+ * the dataset is a 1:100 sample — and *what is sampled is the organizers*.
  *
- * Rates (success %, block %, mix %) are read straight off the sample. Absolute
- * counts and amounts are labelled "sampled" in the UI, and anywhere we quote a
- * platform-wide total we multiply by SCALE_FACTOR and say so.
+ * The 70 accounts here stand in for roughly 7,000. Each one's history is
+ * complete: Big Fork Food & Wine really did take 961 payments for $338,270 last
+ * quarter, and that is the whole of their business, not a hundredth of it.
+ *
+ * Getting this axis the wrong way round is not a cosmetic error. Sampling each
+ * organizer's charges instead means every organizer's own figures have to be
+ * multiplied by 100 to be "real", which turns a regional food festival into a
+ * $134M-a-year operation, hands it a $9.7M Capital offer, and bills it $490,000
+ * for a venue deposit. Every one of those numbers is individually defensible and
+ * collectively absurd. Sampling organizers keeps the same platform headline and
+ * leaves every per-organizer figure one a reader can sanity-check.
+ *
+ * So the rule, which holds everywhere in this codebase:
+ *
+ * - **An organizer's own figures are never scaled.** Their volume, balance,
+ *   financing offer, supplier bills, stored balance and card limits are real as
+ *   they stand.
+ * - **Platform-wide roll-ups are scaled, and say so.** Totals across all
+ *   organizers multiply by SCALE_FACTOR, because the 70 shown are 1% of them.
+ *
+ * Rates (success %, block %, mix %) are read straight off the sample and are
+ * directly comparable to a real platform's either way.
  */
 export const SCALE_FACTOR = 100;
 
@@ -65,14 +84,6 @@ export const FIXTURES = {
   negativeBalanceOrganizers: 3,
   cancellingEventChargeCount: 2_100,
   offlineReaderVenue: 'Cascade Aquarium',
-  /**
-   * Organizers whose supplier bills outrun their Stripe-visible funds before the
-   * bill falls due. Hand-placed for the same reason every other number here is:
-   * the funding-gap recommendation depends on the situation existing, and
-   * leaving it to the seeded draw meant it fired on everyone or no one depending
-   * on constants that have nothing to do with it.
-   */
-  organizersWithFundingGap: 6,
 } as const;
 
 /** Stripe pricing used by the fee simulation (US standard list pricing). */

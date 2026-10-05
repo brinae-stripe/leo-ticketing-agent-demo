@@ -60,8 +60,9 @@ function Hero() {
         <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-white/70">
           One question, answered from the Data Pipeline tables, with the SQL shown and a
           proposed resolution you can execute — after you approve it. Across{' '}
-          {countCompact(TOTAL_CHARGES * SCALE_FACTOR)} payment attempts and{' '}
-          {TOTAL_ACCOUNTS} event organizers.
+          {countCompact(TOTAL_CHARGES * SCALE_FACTOR)} payment attempts and about{' '}
+          {countCompact(TOTAL_ACCOUNTS * SCALE_FACTOR)} event organizers, {TOTAL_ACCOUNTS} of
+          them in this dataset.
         </p>
 
         <form
@@ -255,10 +256,12 @@ function OverviewBody() {
 
       <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-[12.5px] leading-relaxed text-gray-600">
         <strong className="font-semibold text-gray-800">On the numbers.</strong> The seeded
-        dataset is a 1:{SCALE_FACTOR} sample — {TOTAL_CHARGES.toLocaleString('en-US')} charge
-        rows standing in for {(TOTAL_CHARGES * SCALE_FACTOR).toLocaleString('en-US')} payment
-        attempts a quarter. Rates are read straight off the sample; absolute counts and
-        amounts are the sample&apos;s own.{' '}
+        dataset is a 1:{SCALE_FACTOR} sample of the platform&apos;s{' '}
+        <em>organizers</em> — {TOTAL_ACCOUNTS} accounts standing in for about{' '}
+        {(TOTAL_ACCOUNTS * SCALE_FACTOR).toLocaleString('en-US')}, together doing{' '}
+        {(TOTAL_CHARGES * SCALE_FACTOR).toLocaleString('en-US')} payment attempts a quarter.
+        Each organizer shown has their whole history, so every figure on their pages is a real
+        one; only totals across the platform are multiplied up.{' '}
         <Link href="/how-it-works" className="font-medium text-blue-600 hover:underline">
           More on how this is put together
         </Link>

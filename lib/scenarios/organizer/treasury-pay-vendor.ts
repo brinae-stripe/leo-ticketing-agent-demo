@@ -1,4 +1,3 @@
-import { SCALE_FACTOR } from '../../sim/constants';
 import { longDate } from '../../sim/format';
 import { dashboardOnly, ef } from '../../stripe-sim';
 import { money, num, plural, sql, str, T } from '../helpers';
@@ -106,9 +105,8 @@ ORDER BY total_amount DESC`;
 
     if (!financialAccount) {
       const balance = ctx.index.balanceById.get(accountId);
-      // Scaled, to match the embedded-finance rows these figures sit next to.
-      const available = (balance?.available ?? 0) * SCALE_FACTOR;
-      const pending = (balance?.pending ?? 0) * SCALE_FACTOR;
+      const available = balance?.available ?? 0;
+      const pending = balance?.pending ?? 0;
 
       return {
         answer: [

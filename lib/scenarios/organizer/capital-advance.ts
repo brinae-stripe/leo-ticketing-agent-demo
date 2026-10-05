@@ -1,5 +1,4 @@
 import { CAPITAL_ELIGIBILITY } from '../../sim/embedded-finance';
-import { SCALE_FACTOR } from '../../sim/constants';
 import { longDate } from '../../sim/format';
 import { dashboardOnly, ef } from '../../stripe-sim';
 import { money, num, percent, plural, sql, str, within, T } from '../helpers';
@@ -93,8 +92,8 @@ WHERE account_id = '${accountId}'`;
 -- give a payback estimate that is wrong in both directions.
 SELECT
   COUNT(*) AS paid_charges,
-  SUM(c.amount - c.amount_refunded) * ${SCALE_FACTOR} AS trailing_volume,
-  ROUND(SUM(c.amount - c.amount_refunded) * ${SCALE_FACTOR} / 90) AS daily_volume
+  SUM(c.amount - c.amount_refunded) AS trailing_volume,
+  ROUND(SUM(c.amount - c.amount_refunded) / 90) AS daily_volume
 FROM charges c
 WHERE c.account_id = '${accountId}'
   AND c.paid = true
@@ -109,7 +108,7 @@ SELECT
   e.starts_at,
   e.venue,
   COUNT(c.id) AS orders,
-  COALESCE(SUM(CASE WHEN c.paid = true THEN c.amount - c.amount_refunded ELSE 0 END), 0) * ${SCALE_FACTOR} AS sold_so_far
+  COALESCE(SUM(CASE WHEN c.paid = true THEN c.amount - c.amount_refunded ELSE 0 END), 0) AS sold_so_far
 FROM events e
 LEFT JOIN charges c ON c.metadata_event_id = e.id
 WHERE e.account_id = '${accountId}'

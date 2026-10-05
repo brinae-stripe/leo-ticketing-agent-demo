@@ -15,10 +15,10 @@ import { cn } from '@/lib/utils';
 /**
  * The money section's shared furniture.
  *
- * Every figure rendered through these is at platform scale — these rows are one
- * per organizer rather than one per payment, so they are not sampled the way the
- * charge data is. `PlatformScaleNote` exists to say so on any page that puts
- * these next to a sampled figure.
+ * Every figure rendered through these is the organizer's own and unscaled, the
+ * same as their charge rows — the 1:100 sampling is of organizers, not of each
+ * organizer's payments. `PlatformScaleNote` is for the platform pages, where a
+ * total across all organizers is an extrapolation and should say so.
  */
 
 /* --------------------------------- hero ----------------------------------- */
@@ -292,16 +292,14 @@ export function ActivityTable({
 /* --------------------------------- notes ---------------------------------- */
 
 /**
- * Says out loud that these figures are not on the same scale as the charge data.
- * Cheap to render and it prevents the one genuinely confusing thing about this
- * dataset from looking like a bug.
+ * Says out loud where a total is an extrapolation rather than a sum.
  */
 export function PlatformScaleNote({ className }: { className?: string }) {
   return (
     <p className={cn('text-[12px] leading-relaxed text-gray-500', className)}>
-      Figures in this section are at platform scale. The payment data elsewhere in the demo is
-      a 1:100 sample, so an advance or a balance here will look large next to an
-      organizer&apos;s charge rows — one row per organizer is not something you sample.
+      Totals in this section are at platform scale. The 70 organizers in this dataset are a
+      1:100 sample of the platform&apos;s, so figures across all of them are multiplied up.
+      Any single organizer&apos;s own numbers are theirs, unscaled.
     </p>
   );
 }

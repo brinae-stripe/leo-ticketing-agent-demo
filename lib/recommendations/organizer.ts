@@ -577,18 +577,29 @@ export function organizerDashboardRecommendations(
     // Never "due in 0 days" — a deadline today reads as one already missed.
     const due =
       s.dueInDays <= 0
-        ? 'is due today'
+        ? 'due today'
         : s.dueInDays === 1
-          ? 'is due tomorrow'
-          : `is due in ${s.dueInDays} days`;
+          ? 'due tomorrow'
+          : `due in ${s.dueInDays} days`;
+
+    // One bill gets named. A stack gets totalled, because headlining whichever
+    // row happened to tip it reads as though the agent cannot tell a $250 print
+    // bill from the venue deposit that actually caused the problem.
+    const single = s.obligations.length === 1;
+    const big = s.largest;
+    const title = single
+      ? `${money(o.amount)} ${o.counterparty ? `to ${o.counterparty} ` : ''}is ${due} — funds on Stripe come up ${money(s.amount)} short`
+      : `${money(s.cumulativeDue)} of supplier bills ${due} — funds on Stripe come up ${money(s.amount)} short`;
 
     out.push({
       id: 'funding_gap',
       tone: s.dueInDays <= 7 ? 'act' : 'watch',
-      title: `${money(o.amount)} ${o.counterparty ? `to ${o.counterparty} ` : ''}${due} — funds on Stripe come up ${money(s.amount)} short`,
+      title,
       why: [
-        `${o.label}${o.counterparty ? `, ${o.counterparty}` : ''}, ${money(o.amount)}, due ${longDate(o.dueDate)}.`,
-        `Everything due by then totals ${money(s.cumulativeDue)} against ${money(s.projectedFunds)} projected reachable.`,
+        single
+          ? `${o.label}${o.counterparty ? `, ${o.counterparty}` : ''}, ${money(o.amount)}, due ${longDate(o.dueDate)}.`
+          : `${s.obligations.length} bills fall due by ${longDate(o.dueDate)}, the largest being ${money(big.amount)} for ${big.label.toLowerCase()}${big.counterparty ? ` to ${big.counterparty}` : ''}.`,
+        `Against ${money(s.projectedFunds)} projected reachable by then.`,
         s.heldByPreEventHold && outlook.nextEvent
           ? `Ticket revenue from ${outlook.nextEvent.name} does not count toward that: this account settles after the event, so Marquee holds it until doors open ${longDate(outlook.nextEvent.starts_at)}.`
           : `Projected from ${money(Math.round(outlook.dailyRevenue))} a day of ticket revenue.`,
@@ -605,8 +616,8 @@ export function organizerDashboardRecommendations(
           ].join(' ')
         : 'No financing offer is written on this account, so an advance is not an option today — underwriting is Stripe\'s decision, not the platform\'s. The realistic moves are supplier terms or funds from outside Stripe. This projection only sees money on Stripe.',
       ask: live
-        ? o.counterparty
-          ? `Can an advance cover the ${o.label.toLowerCase()} due to ${o.counterparty}?`
+        ? big.counterparty
+          ? `Can an advance cover the ${big.label.toLowerCase()} due to ${big.counterparty}?`
           : 'Can an advance cover what is due before my next event?'
         : 'Which organizers could be offered financing?',
     });

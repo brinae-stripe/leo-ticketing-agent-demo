@@ -642,18 +642,21 @@ function DataSection() {
               <CardTitle>Scale factor: 1:{SCALE_FACTOR}</CardTitle>
               <CardDescription>
                 The story is a platform doing ~
-                {(TOTAL_CHARGES * SCALE_FACTOR).toLocaleString('en-US')} attempts a quarter.
-                Holding that in a browser tab is not realistic, so{' '}
-                {TOTAL_CHARGES.toLocaleString('en-US')} rows stand in for it.
+                {(TOTAL_CHARGES * SCALE_FACTOR).toLocaleString('en-US')} attempts a quarter
+                across thousands of organizers. What is sampled is the organizers:{' '}
+                {TOTAL_ACCOUNTS} accounts stand in for about{' '}
+                {(TOTAL_ACCOUNTS * SCALE_FACTOR).toLocaleString('en-US')}, and each one shown
+                has its complete history.
               </CardDescription>
             </div>
           </CardHeader>
           <CardBody>
             <p className="text-[13px] leading-relaxed text-gray-700">
               Rates — success, block, mix, dispute rate — are read straight off the sample and
-              are directly comparable to a real platform&apos;s. Absolute counts and amounts are
-              the sample&apos;s own, and anywhere the UI quotes a platform-wide total it says
-              so.
+              are directly comparable to a real platform&apos;s. So are an organizer&apos;s own
+              amounts: their volume, balance, financing offer and supplier bills are real as
+              they stand, which is what makes them worth checking. Only totals across every
+              organizer are multiplied up, and the UI says so where it does it.
             </p>
             <h4 className="label-xs mt-4 mb-2">Calibrated to</h4>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12.5px]">

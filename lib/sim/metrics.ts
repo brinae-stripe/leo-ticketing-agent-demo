@@ -1,4 +1,4 @@
-import { DAY, NOW, QUARTER_START, SCALE_FACTOR, TREND_WEEKS, WEEK } from './constants';
+import { DAY, NOW, QUARTER_START, TREND_WEEKS, WEEK } from './constants';
 import type { SimIndex } from './dataset';
 import type { Charge, EventStatus, OrganizerCategory, SimDataset } from './types';
 
@@ -825,11 +825,6 @@ export function eventDetail(
     serviceFeeOwed: ledgerRow?.fee_owed ?? 0,
     serviceFeeSettled: ledgerRow?.settled ?? false,
   };
-}
-
-/** Platform-wide figures scaled back up from the 1:100 sample. */
-export function scaled(value: number): number {
-  return value * SCALE_FACTOR;
 }
 
 export type { Charge };

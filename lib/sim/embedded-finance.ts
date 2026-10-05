@@ -1,4 +1,4 @@
-import { CURRENCY, DAY, HOUR, NOW, SCALE_FACTOR } from './constants';
+import { CURRENCY, DAY, HOUR, NOW } from './constants';
 import { Rng } from './rng';
 import type {
   Account,
@@ -28,19 +28,20 @@ import type {
  * question is not "what do the enrolled organizers do", it is "who is eligible
  * and not enrolled", which is the number that turns into revenue.
  *
- * ## These rows are not sampled
+ * ## Everything here is at the organizer's own scale
  *
- * `charges` is a 1:100 sample: 24,000 rows stand in for 2.4M payment attempts.
- * Nothing here is. A financing offer is one row per organizer, not one row per
- * payment, so there is nothing to sample — an organizer either has an offer or
- * does not, and a platform with 70 organizers has at most 70 offers.
+ * The dataset samples organizers, not their charges (see SCALE_FACTOR), so an
+ * organizer's charge rows are the whole of their trading history. Amounts here
+ * are sized straight off that: a festival that took $336,599 last quarter is
+ * underwritten against $1.35M a year and offered a few per cent of it. Query
+ * `charges` for the same organizer and the figures agree, because they are the
+ * same figures — there is no scaling step to remember and nothing to reconcile.
  *
- * The consequence is that amounts here are sized off `trailingVolume *
- * SCALE_FACTOR`, the organizer's real volume, rather than off the sampled rows
- * directly. A $4M organizer gets an offer sized against $4M. Read alongside a
- * `charges` query the two look inconsistent — the charge rows for that organizer
- * only add up to $40,000 — and that is the sampling, not a bug. It is listed on
- * /how-it-works with the other schema caveats.
+ * What that buys is numbers a reader can check. A $40,000-to-$108,000 advance
+ * against a $1.35M-a-year food festival is a real Stripe Capital offer. The same
+ * organizer scaled up a hundredfold gets $9.7M, which is more than most
+ * independent festivals in the country gross, and the moment anyone in the room
+ * does that arithmetic the rest of the demo stops being believable too.
  */
 
 /* --------------------------------- content -------------------------------- */
@@ -113,10 +114,15 @@ const OFF_POLICY_MERCHANTS = [
  */
 export const CAPITAL_ELIGIBILITY = {
   /**
-   * Trailing 90-day net volume, in cents, at platform scale — $4M. Compare
-   * against `sampledVolume * SCALE_FACTOR`, not against the sampled rows.
+   * Trailing 90-day net volume, in cents — $30,000, which is roughly $120,000 a
+   * year. The organizer's own figure; nothing is scaled.
+   *
+   * Low, deliberately. Stripe Capital is not reserved for large merchants, and
+   * setting the bar where only festivals clear it would quietly remove the most
+   * interesting organizers from the platform-side question — the comedy club
+   * doing $218,000 a year is exactly who an offer is useful to.
    */
-  minTrailingVolume: 4_000_000_00,
+  minTrailingVolume: 30_000_00,
   minPaidCharges: 120,
   /**
    * Advance size as a share of *annual* volume.
@@ -126,6 +132,15 @@ export const CAPITAL_ELIGIBILITY = {
    * to the volume they are secured against.
    */
   offerShareOfAnnualVolume: [0.03, 0.08] as const,
+  /**
+   * Hard ceiling on an advance, in cents — $250,000.
+   *
+   * A share of annual volume alone would write Riverlight a $759,000 advance on
+   * the strength of a $9.5M year. Cash advances cap out well below that, so the
+   * largest organizer on the platform is limited by the product rather than by
+   * its own volume — which is itself the more interesting fact to show.
+   */
+  maxOffer: 250_000_00,
   feeRate: [0.06, 0.11] as const,
   /**
    * The payback window the withhold rate is solved for, in days.
@@ -143,7 +158,7 @@ export const CAPITAL_ELIGIBILITY = {
 
 export interface EligibilityInput {
   account: Account;
-  /** Sampled trailing 90-day net volume. Scaled up inside. */
+  /** The organizer's own trailing 90-day net volume, in cents. */
   trailingVolume: number;
   paidCharges: number;
 }
@@ -153,7 +168,7 @@ export function isCapitalEligible(input: EligibilityInput): boolean {
     input.account.charges_enabled &&
     input.account.payouts_enabled &&
     input.account.requirements_past_due.length === 0 &&
-    input.trailingVolume * SCALE_FACTOR >= CAPITAL_ELIGIBILITY.minTrailingVolume &&
+    input.trailingVolume >= CAPITAL_ELIGIBILITY.minTrailingVolume &&
     input.paidCharges >= CAPITAL_ELIGIBILITY.minPaidCharges
   );
 }
@@ -212,12 +227,16 @@ export function generateEmbeddedFinance(
   const withOffers = rng.sample(eligible, Math.round(eligible.length * 0.82));
 
   for (const account of withOffers) {
-    // Platform scale, not sample scale — see the note at the top of this file.
-    const trailing90 = (input.trailingVolumeByAccount.get(account.id) ?? 0) * SCALE_FACTOR;
+    const trailing90 = input.trailingVolumeByAccount.get(account.id) ?? 0;
     const annualVolume = trailing90 * 4;
     const share = rng.between(...CAPITAL_ELIGIBILITY.offerShareOfAnnualVolume);
-    const offered = roundOffer(annualVolume * share);
-    if (offered < 2_500_000) continue;
+    const offered = Math.min(
+      CAPITAL_ELIGIBILITY.maxOffer,
+      roundOffer(annualVolume * share),
+    );
+    // Below a few thousand dollars an advance is not worth either side's
+    // paperwork, and Stripe would not write it.
+    if (offered < 500_000) continue;
 
     const feeRate = rng.between(...CAPITAL_ELIGIBILITY.feeRate);
     // Solve the withhold rate for the payback window rather than drawing it
@@ -316,10 +335,13 @@ export function generateEmbeddedFinance(
   );
 
   for (const account of treasuryPilot) {
-    const balance = balanceByAccount.get(account.id);
-    // Platform scale, as with the offers above.
-    const available = (balance?.available ?? 0) * SCALE_FACTOR;
     const openedAt = NOW - rng.int(40, 160) * DAY;
+    // Weekly ticket revenue is what actually sweeps in, so the account's history
+    // is sized off that rather than off the settled balance. A balance is the
+    // residue after payouts — near zero for an organizer who sweeps often — and
+    // sizing a quarter of inbound sweeps off it says nothing about how much they
+    // trade.
+    const weeklyRevenue = (input.trailingVolumeByAccount.get(account.id) ?? 0) / 13;
 
     const financialAccount: TreasuryFinancialAccount = {
       id: rng.id('fa', 20),
@@ -352,7 +374,10 @@ export function generateEmbeddedFinance(
     // organizer's settled balance keeps the account's history proportional to
     // how much they actually trade, rather than inventing a number and hoping
     // it looks plausible next to their charges.
-    const weeklySweep = Math.max(200_000, Math.round(available * rng.between(0.18, 0.4)));
+    const weeklySweep = Math.max(
+      50_000,
+      Math.round(weeklyRevenue * rng.between(0.35, 0.75)),
+    );
     for (let ts = openedAt + 7 * DAY; ts <= NOW; ts += 7 * DAY) {
       const created = Math.round(ts + 9 * HOUR);
       const amount = Math.round((weeklySweep * rng.between(0.55, 1.5)) / 10_000) * 10_000;
@@ -487,9 +512,16 @@ export function generateEmbeddedFinance(
       };
       issuing_cardholders.push(cardholder);
 
-      // Per-person monthly limits, which are set by role rather than by the
-      // organizer's volume — a production lead's ceiling is a policy decision.
-      const limit = rng.pick([1_000_000, 2_500_000, 5_000_000, 10_000_000]);
+      // Per-person monthly limits. The ceiling is a policy decision rather
+      // than a formula, so it comes off a ladder — but which rungs are on the
+      // table depends on what the organizer turns over, because a $25,000-a-month
+      // production card at an organizer billing $18,000 a month is not a control,
+      // it is an unsecured line of credit.
+      const monthlyRevenue = (input.trailingVolumeByAccount.get(account.id) ?? 0) / 3;
+      const ladder = [100_000, 250_000, 500_000, 1_000_000, 2_500_000, 5_000_000];
+      const ceiling = Math.max(100_000, monthlyRevenue * 0.3);
+      const affordable = ladder.filter((rung) => rung <= ceiling);
+      const limit = rng.pick(affordable.length > 0 ? affordable : [ladder[0]]);
       const card: IssuingCard = {
         id: rng.id('ic', 20),
         cardholder_id: cardholder.id,

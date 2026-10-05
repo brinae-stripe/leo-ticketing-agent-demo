@@ -305,10 +305,25 @@ festivals, haunted attractions, light shows, performing arts companies, minor-le
 aquariums, comedy clubs, photo-op operators, brand activations and a renaissance faire —
 including 14 named organizers with richer histories.
 
-**Scale factor 1:100.** The story is a platform doing ~2.4M payment attempts a quarter;
-holding that in a browser tab is not realistic, so 24,000 charge rows stand in for it. Rates
-are read straight off the sample and are directly comparable to a real platform's. Absolute
-counts and amounts are the sample's own, and the UI says so where it matters.
+**Scale factor 1:100 — and what is sampled is the organizers.** The story is a platform doing
+~2.4M payment attempts a quarter across thousands of organizers. The 70 accounts here stand in
+for roughly 7,000, and each one's history is *complete*: Big Fork Food & Wine really did take
+961 payments for $338,270 last quarter, and that is their whole business rather than a
+hundredth of it.
+
+That axis is the whole ballgame. Sampling each organizer's charges instead means every
+per-organizer figure has to be multiplied by 100 to be "real", which turns a regional food
+festival into a $134M-a-year operation, hands it a $9.7M Capital advance and bills it $490,000
+for a venue deposit. Each of those is individually defensible and collectively absurd, and the
+moment anyone does the arithmetic the rest of the demo stops being believable. So:
+
+- **An organizer's own figures are never scaled.** Volume, balance, financing offer, supplier
+  bills, stored balance, card limits — real as they stand, and they agree with that
+  organizer's charge rows because they *are* those rows.
+- **Platform-wide roll-ups are scaled, and say so.** A total across all organizers multiplies
+  by the scale factor, because the 70 shown are 1% of them.
+
+Rates are read straight off the sample and are directly comparable to a real platform's.
 
 Calibrated to: 95.7% payment success · 1.0% block rate · 17% wallet share of attempts · 22%
 Link share of transactions · 10% card-present · under 1% of volume on pay-over-time · 0.08%
@@ -326,10 +341,10 @@ Capital pays out to the Stripe balance rather than into the stored balance, so i
 would break the reconciliation.
 
 **One number for volume.** `accounts.metadata.trailing_volume` is the authoritative trailing
-90-day figure — platform scale, and corrected for the one fixture event that carries its full
-charge list instead of a 1:100 sample. Every consumer reads that column rather than re-deriving
-it, because getting the correction wrong once handed the largest financing offer on the platform
-to a test fixture.
+90-day figure — the organizer's own, unscaled. Every consumer reads that column rather than
+re-deriving it. It used to carry a correction for the one fixture event that holds its full
+charge list while everything else was sampled; sampling organizers instead makes every event's
+charge list complete, so the special case is gone rather than fixed.
 
 **A monthly ceiling actually binds.** Card authorisations are checked against
 per-calendar-month approved spend as the data is generated, so an authorisation
@@ -347,14 +362,13 @@ uses the same arithmetic the Event Advance page shows. Pick them independently a
 advance shows 2% repaid next to a daily rate implying 12% — which is the kind of contradiction a
 controller spots immediately.
 
-**Embedded finance is not sampled.** `charges` is a 1:100 sample. The Capital, Treasury and
-Issuing tables are not, because there is nothing to sample — a financing offer is one row per
-organizer, not one per payment, and a platform with 70 organizers has at most 70 offers. So
-their amounts are sized off the organizer's *real* volume (`trailingVolume * SCALE_FACTOR`)
-rather than off the sampled rows, and a $600,000 offer sits next to an organizer whose charge
-rows only add up to $40,000. Scenarios that mix the two scale the sampled side in the SQL,
-where you can see it happening. The organizer page keeps the two apart and labels the
-embedded-finance card "Platform scale" for the same reason.
+**Embedded finance is at the organizer's own scale.** Capital, Treasury and Issuing amounts are
+sized straight off the organizer's trailing volume, so they agree with that organizer's charge
+rows and there is no scaling step to reconcile. A $1.35M-a-year festival is offered $40,000 to
+$108,000, which is a real Stripe Capital offer; advances are capped at $250,000 regardless of
+volume, so the platform's largest organizer is limited by the product rather than by its own
+size. Card limits come off a role-based ladder bounded by what the organizer turns over — a
+$25,000-a-month production card at an organizer billing $18,000 a month is not a control.
 See [`lib/sim/embedded-finance.ts`](lib/sim/embedded-finance.ts).
 
 **`vendor_bills` is not a Stripe object.** It is platform-side data, and the only table here that
@@ -364,27 +378,48 @@ first place. Stripe can see an organizer's balance and their ticket revenue; wha
 the venue invoice sitting on their desk. A ticketing platform can, which is precisely the asymmetry
 that makes the platform the right place to notice.
 
-**The funding gap is the platform's own hold, not a number we picked.** Event costs are
-front-loaded and ticket revenue is not: the venue deposit, the staging contract and the talent
-guarantee all fall due *before* doors open, while Marquee holds that event's revenue until it has
-happened, because a cancelled show means refunding buyers. So an organizer's spendable balance
-reflects events that have already run while the bills on their desk belong to the one that has
-not. Nothing is injected to manufacture a shortfall — it falls out of the same pre-event hold the
-platform-side float page measures, seen from the organizer's side. Bills for covered organizers
-are scaled to stay comfortably under projected funds, so the flag is selective rather than
-universal.
+**The funding gap is discovered, not engineered.** Event costs are front-loaded and ticket
+revenue is not: the venue deposit, the staging contract and the talent guarantee all fall due
+*before* doors open, while Marquee holds that event's revenue until it has happened, because a
+cancelled show means refunding buyers. So an organizer's spendable balance reflects events that
+have already run while the bills on their desk belong to the one that has not — the same
+pre-event hold the platform float page measures, seen from the organizer's side.
+
+Bills are sized off the event and nothing else: what this organizer's completed events
+typically grossed, times a realistic cost share per line, times one per-organizer cost-intensity
+draw (a promoter who owns their staging stages the same gross far cheaper than a festival
+trucking in a built site). Whether that leaves them short is then a question for whoever reads
+the data — `fundingOutlook` works it out at render time, and 4 of 70 organizers come up short
+while 25 have bills they can cover.
+
+An earlier version solved it backwards: bills were scaled until the shortfall at a chosen bill
+hit a target fraction of projected funds. It is worth saying why that was wrong, because it
+looked fine. It needed the balance to exist before the bills, it quietly guaranteed the
+conclusion the demo then presented as a finding, and it collapsed the moment amounts were not
+inflated a hundredfold — an organizer's Stripe balance is near zero between weekly payouts, so
+solving against it produced $300 venue deposits and a $1,283 "funding gap" sitting next to the
+offer of a $51,000 advance.
 
 **What the projection can and cannot see.** Funds *on Stripe* — balance, stored balance, and
-ticket revenue arriving on Stripe — against obligations due by a date, where obligations are open
-supplier bills, service fees (debited four days after the event they belong to, not on the event
-date), and outbound payments already in flight. An organizer's working capital mostly sits in
-their own bank, which this dataset does not model and the agent has no access to. A shortfall is
-therefore a prompt to check, never a verdict, and the card says so in those words. Two guards keep
-it from crying wolf: a gap under 15% of the obligation that triggered it is a rounding difference
-in a forecast built on a trailing average rather than a finding, and a bill falling due inside
-three days is recorded as paid, because an invoice due tomorrow has either been settled already or
-is a phone call rather than a financing decision. "Due in N days" is counted in calendar days off
-UTC midnight so it agrees with the date printed beside it.
+ticket revenue arriving on Stripe — against obligations due by a date, where obligations are
+open supplier bills and service fees (debited four days after the event they belong to, not on
+the event date). Payments already in flight are deliberately *not* obligations: they are the
+same money as `balance_outbound_pending`, which reachable funds already nets out, and counting
+them twice is what produced a card reporting a staging payment "due in 0 days" against an
+organizer who was not in fact short. An organizer's working capital mostly sits in their own
+bank, which this dataset does not model and the agent has no access to. A shortfall is
+therefore a prompt to check, never a verdict, and the card says so in those words.
+
+Three guards keep it from crying wolf. A gap has to clear an absolute floor of $1,000, because
+a $550 shortfall on an $800 print bill is true and useless. It has to be at least 15% of the
+whole stack due by that date, not of the row that happened to tip it. And a bill falling due
+inside three days is recorded as paid, because an invoice due tomorrow has either been settled
+or is a phone call rather than a financing decision. The card headlines a single bill when
+there is one and the stack total when there are several — headlining whichever row tipped it
+produced "$500 is due in 16 days — funds come up $1,470 short", where the shortfall exceeds the
+bill it is supposedly about. "Due in N days" is counted in calendar days off UTC midnight so it
+agrees with the date printed beside it.
+
 See [`lib/sim/bills.ts`](lib/sim/bills.ts) and `fundingOutlook` in
 [`lib/sim/money.ts`](lib/sim/money.ts).
 
